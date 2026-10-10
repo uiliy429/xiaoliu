@@ -1,0 +1,19 @@
+{
+  "name": "小流",
+  "short_name": "小流",
+  "description": "不积小流，无以成江海。每日的计划、记账、运动与读书。",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eff4ec",
+  "theme_color": "#ffffff",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

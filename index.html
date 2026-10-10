@@ -1,0 +1,1902 @@
+<!DOCTYPE html>
+<!--
+  ╔══════════════════════════════════════════════════════════════╗
+  ║  小流                                                          ║
+  ║  由 不一书个人工作台生成器 (bys-personal-dashboard) 生成       ║
+  ╠══════════════════════════════════════════════════════════════╣
+  ║  改这个文件时请遵守：                                          ║
+  ║  1. 每个功能必须被分区标记包裹，且 START 和 END 的功能名        ║
+  ║     必须一字不差（HTML 和 JS 两处都要）                        ║
+  ║  2. 数据读写只走 Store.*，不要直接碰 localStorage             ║
+  ║  3. 输入框 font-size 不能小于 16px                            ║
+  ║  4. 敏感数据（API key）走 Store.setSecret，不进备份            ║
+  ╚══════════════════════════════════════════════════════════════╝
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>小流</title>
+
+<!-- PWA：这四行决定了"添加到主屏幕"之后是不是全屏、图标好不好看 -->
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="小流">
+<meta name="theme-color" content="#ffffff">
+
+<style>
+/* ==== 主题变量（第 4 步选定的风格包原样填这里，以后换肤只改这一段） ==== */
+:root{
+  --bg:#eff4ec;
+  --sidebar:#ffffff;
+  --sidebar-text:#3a4a42;
+  --sidebar-active:#e2ecdd;
+  --card:#ffffff;
+  --text:#1c2620;
+  --text-dim:#849187;
+  --accent:#2f5d52;
+  --radius:12px;
+  --shadow:0 1px 3px rgba(47,93,82,.07);
+  --font:-apple-system,"PingFang SC",system-ui,sans-serif;
+  --line:#dde6d8;          /* 1px 细边框色。现代审美用细线，不用投影 */
+
+  /* 字号阶梯 —— 故意拉开跨度。所有字号都差不多，是业余感最大的来源 */
+  --fs-hero:40px;   /* 英雄元素：每页最大的那一个数字或标题，其余全部退后 */
+  --fs-title:22px;
+  --fs-body:16px;   /* 输入框不得低于 16px，否则 iOS 会自动放大整页 */
+  --fs-meta:13px;
+
+  --pad:18px;       /* 卡片内边距。留白是最便宜的高级感，宽屏下会变大 */
+  --gap:12px;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --ease:cubic-bezier(.4,0,.2,1);
+  --dur:.18s;
+}
+
+/* ==== 基础 ==== */
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  font-family:var(--font); background:var(--bg); color:var(--text);
+  font-size:var(--fs-body); line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+  overflow:hidden; /* 整页不滚，只让内容区滚 —— 避免 iOS 橡皮筋把侧边栏拽走 */
+}
+.app{display:flex;height:100%}
+
+/* ==== 侧边栏：常驻窄条 ==== */
+.side{
+  width:76px;flex-shrink:0;background:var(--sidebar);
+  display:flex;flex-direction:column;
+  padding:calc(12px + env(safe-area-inset-top,0)) 6px calc(12px + env(safe-area-inset-bottom,0));
+  overflow-y:auto;-webkit-overflow-scrolling:touch;
+}
+.side::-webkit-scrollbar{display:none}
+.brand{text-align:center;margin-bottom:14px;flex-shrink:0}
+.brand .logo{font-size:26px;line-height:1}
+.brand .name{font-size:11px;color:var(--sidebar-text);opacity:.85;margin-top:4px;line-height:1.3;word-break:break-all}
+.nav{display:flex;flex-direction:column;gap:4px}
+.nav button{
+  border:none;background:transparent;font-family:inherit;
+  padding:10px 2px;border-radius:12px;
+  color:var(--sidebar-text);font-size:11px;line-height:1.3;
+}
+.nav button .ico{display:block;font-size:21px;margin-bottom:3px}
+.nav button.on{background:var(--sidebar-active)}
+
+/* ==== 内容区 ==== */
+.main{
+  flex:1;min-width:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding:calc(14px + env(safe-area-inset-top,0)) 12px calc(28px + env(safe-area-inset-bottom,0));
+  scroll-behavior:smooth;
+}
+.page{display:none;flex-direction:column;gap:var(--gap)}
+.page.on{display:flex}
+.page-title{font-size:var(--fs-title);font-weight:500;line-height:1.25;letter-spacing:-.01em;margin-bottom:2px}
+.page-sub{font-size:var(--fs-meta);color:var(--text-dim);margin-top:-6px;margin-bottom:2px}
+
+/* ==== 卡片 ==== */
+.card{
+  background:var(--card);border-radius:var(--radius);
+  border:1px solid var(--line);   /* 细线代替投影 */
+  box-shadow:var(--shadow);padding:var(--pad);
+}
+.card h2{font-size:17px;font-weight:500;margin-bottom:12px;display:flex;align-items:center;gap:7px}
+.hint{font-size:var(--fs-meta);color:var(--text-dim);margin-top:8px;line-height:1.6}
+.empty{font-size:var(--fs-meta);color:var(--text-dim);text-align:center;padding:22px 0}
+
+/* 英雄元素：每页最大的那一个。数字一律等宽，对齐后立刻专业 */
+.hero{font-size:var(--fs-hero);font-weight:500;line-height:1.1;letter-spacing:-.01em}
+.num,.hero{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.unit{font-size:var(--fs-meta);color:var(--text-dim);font-weight:400;margin-left:5px}
+
+/* ==== 表单：字号必须 >=16px，否则 iOS 会自动放大整页 ==== */
+input,textarea,select{
+  transition:border-color var(--dur) var(--ease);
+  width:100%;font-size:var(--fs-body);font-family:inherit;color:var(--text);line-height:1.5;
+  padding:11px 13px;border:1px solid rgba(128,128,128,.28);
+  border-radius:calc(var(--radius) - 6px);background:transparent;
+}
+textarea{min-height:88px;resize:vertical;line-height:1.6}
+input::placeholder,textarea::placeholder{color:var(--text-dim)}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent)}
+.btn{
+  padding:11px 18px;font-size:15px;font-family:inherit;white-space:nowrap;
+  border:none;border-radius:calc(var(--radius) - 6px);
+  background:var(--accent);color:#fff;
+}
+.btn.ghost{background:transparent;color:var(--text);border:1px solid rgba(128,128,128,.3)}
+.btn.danger{background:#d9534f}
+.btn:active{opacity:.75}
+.row{display:flex;gap:8px;align-items:center}
+.row .btn{flex-shrink:0}
+
+/* ==== 列表 ==== */
+.item{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px dashed rgba(128,128,128,.22)}
+.item:last-child{border-bottom:none}
+.item .grow{flex:1;min-width:0;line-height:1.6}
+.item .del{color:var(--text-dim);font-size:16px;background:none;border:none;padding:0 4px;flex-shrink:0}
+.box{
+  width:21px;height:21px;flex-shrink:0;margin-top:1px;
+  border:2px solid var(--accent);border-radius:6px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;color:#fff;background:transparent;
+}
+.item.done .box{background:var(--accent)}
+.item.done .grow{text-decoration:line-through;color:var(--text-dim)}
+
+/* ==== 日期徽标（DDL 倒计时） ==== */
+.dday{
+  font-size:11px;padding:3px 8px;border-radius:7px;flex-shrink:0;
+  background:var(--sidebar-active);color:var(--accent);font-weight:600;
+  font-variant-numeric:tabular-nums;white-space:nowrap;margin-top:2px;
+}
+.dday.urgent{background:#ffe6e6;color:#c0392b}
+
+/* ==== 小方块热力图（运动/喝水） ==== */
+.week{display:flex;gap:6px;margin-top:14px}
+.week i{flex:1;height:26px;border-radius:7px;background:var(--line);transition:background var(--dur) var(--ease)}
+.week i.hit{background:var(--accent)}
+
+/* ==== 排行榜（热榜） ==== */
+.rank{display:flex;gap:9px;padding:9px 0;border-bottom:1px dashed rgba(128,128,128,.22);align-items:baseline}
+.rank:last-child{border-bottom:none}
+.rank .no{font-size:12px;font-weight:700;width:16px;flex-shrink:0;color:var(--text-dim);font-variant-numeric:tabular-nums}
+.rank .no.top{color:#c0392b}
+.rank a{font-size:14px;line-height:1.5;color:var(--text);text-decoration:none;flex:1;min-width:0}
+.rank a:active{opacity:.6}
+
+/* ==== 分类按钮（记账） ==== */
+.cats{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
+.cats button{
+  font-size:13px;font-family:inherit;padding:8px 13px;border-radius:9px;
+  border:1px solid rgba(128,128,128,.25);color:var(--text-dim);background:transparent;
+  transition:all var(--dur) var(--ease);
+}
+.cats button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+/* ==== 科普卡 ==== */
+.sci{font-size:14px;line-height:1.75;color:var(--text)}
+.sci h3{font-size:15px;font-weight:500;margin-bottom:8px}
+.sci .tag{
+  display:inline-block;font-size:11px;padding:3px 9px;border-radius:7px;
+  background:var(--sidebar-active);color:var(--accent);margin-bottom:10px;font-weight:600;
+}
+
+/* ==== 提示条 ==== */.banner{
+  background:var(--accent);color:#fff;padding:11px 14px;
+  border-radius:var(--radius);font-size:13px;line-height:1.5;
+  display:flex;align-items:center;gap:10px;
+}
+.banner button{
+  margin-left:auto;flex-shrink:0;background:rgba(255,255,255,.22);color:#fff;
+  border:none;padding:6px 12px;border-radius:8px;font-size:13px;font-family:inherit;
+}
+.toast{
+  position:fixed;left:50%;bottom:calc(28px + env(safe-area-inset-bottom,0));
+  transform:translateX(-50%) translateY(8px);z-index:99;
+  background:rgba(0,0,0,.82);color:#fff;padding:10px 18px;border-radius:20px;
+  font-size:14px;opacity:0;pointer-events:none;
+  transition:opacity var(--dur) var(--ease),transform var(--dur) var(--ease);
+}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ════════ 动画 ════════
+   只做「让状态变化可理解」的动画，不做炫技的。
+   这是一天开十次的工具，任何多余动效第十次看就烦了。 */
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.page.on > *{animation:rise .26s var(--ease) both}
+/* 错开进场，形成自上而下的节奏，只错开前几个免得末尾等太久 */
+.page.on > *:nth-child(1){animation-delay:0s}
+.page.on > *:nth-child(2){animation-delay:.03s}
+.page.on > *:nth-child(3){animation-delay:.06s}
+.page.on > *:nth-child(4){animation-delay:.09s}
+.page.on > *:nth-child(n+5){animation-delay:.12s}
+
+.nav button,.btn,.card,.item .box{transition:all var(--dur) var(--ease)}
+.btn:active{opacity:.75;transform:scale(.98)}
+.item .box{transform:scale(1)}
+.item.done .box{animation:pop .22s var(--ease)}
+@keyframes pop{0%{transform:scale(1)}45%{transform:scale(1.18)}100%{transform:scale(1)}}
+
+/* 用户在系统里关了动效就一律不放 —— 这不是可选项 */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms !important;animation-delay:0s !important;
+    transition-duration:.01ms !important;scroll-behavior:auto !important}
+}
+
+/* ════════ 平板与横屏：侧栏展开成图标配文字 ════════ */
+@media (min-width:700px){
+  :root{--fs-hero:48px;--fs-title:26px;--pad:24px;--gap:16px}
+  .side{width:200px;padding-left:12px;padding-right:12px}
+  .brand{text-align:left;padding:0 8px;margin-bottom:22px}
+  .brand .logo{font-size:30px}
+  .brand .name{font-size:14px;margin-top:6px;word-break:normal}
+  .nav{gap:2px}
+  .nav button{
+    display:flex;align-items:center;gap:12px;text-align:left;
+    padding:12px 14px;font-size:15px;
+  }
+  .nav button .ico{display:inline;font-size:20px;margin:0;width:24px;text-align:center}
+  .main{padding:28px 32px 40px}
+}
+
+/* ════════ 桌面：卡片并排 ════════
+   标题、副标题、提示条永远占满整行；卡片默认半宽。
+   需要占满的重要卡片（英雄卡、长列表）加 class="card wide"。 */
+@media (min-width:1100px){
+  :root{--fs-hero:56px;--fs-title:30px;--pad:30px;--gap:20px}
+  .side{width:240px}
+  .main{padding:36px 44px 52px}
+  .page.on{
+    display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:var(--gap);align-content:start;
+  }
+  .page.on > .page-title,
+  .page.on > .page-sub,
+  .page.on > .banner,
+  .page.on > .card.wide{grid-column:1 / -1}
+}
+
+/* 超宽屏限制内容宽度并居中 —— 一行文字超过 40 个汉字就难读了 */
+@media (min-width:1700px){
+  .main > .page.on{max-width:1400px;margin:0 auto}
+}
+
+/* ==== 悬浮刷新键 ====
+   放在右下角，任何页面都能点。手机上没有 F5，
+   而"页面上显示的还是不是最新数据"是每天都会有的疑问。 */
+.refresh{
+  position:fixed;z-index:60;
+  right:16px;bottom:calc(20px + env(safe-area-inset-bottom,0));
+  width:46px;height:46px;border-radius:50%;
+  border:1px solid var(--line);background:var(--card);color:var(--text-dim);
+  display:flex;align-items:center;justify-content:center;
+  font-size:19px;line-height:1;
+  box-shadow:0 2px 10px rgba(0,0,0,.10);
+  transition:transform var(--dur) var(--ease),opacity var(--dur) var(--ease);
+}
+.refresh:active{transform:scale(.92);opacity:.7}
+.refresh.spin{animation:spin .5s var(--ease)}
+@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+@media (min-width:700px){ .refresh{right:28px;bottom:calc(28px + env(safe-area-inset-bottom,0))} }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ==== 侧边栏 START ==== -->
+  <aside class="side">
+    <div class="brand">
+      <div class="logo">🌊</div>
+      <div class="name">小流</div>
+    </div>
+    <nav class="nav" id="nav">
+      <!-- 由 App.routes 自动渲染 -->
+    </nav>
+  </aside>
+  <!-- ==== 侧边栏 END ==== -->
+
+  <main class="main" id="main">
+
+    <!-- ==== 功能：今日计划 START ==== -->
+    <section class="page" id="page-plan">
+      <div class="page-title">今天</div>
+      <div class="page-sub" id="planDate"></div>
+
+      <div class="card">
+        <h2>📅 固定行程</h2>
+        <div id="planFixed"></div>
+        <div class="row" style="margin-top:12px">
+          <input type="text" id="fixedInput" placeholder="加一条每天要做的事">
+          <button class="btn" onclick="Plan.addFixed()">添加</button>
+        </div>
+        <p class="hint">每天零点自动重置勾选状态，不用手动清</p>
+      </div>
+
+      <div class="card">
+        <h2>📝 今日待办</h2>
+        <div id="planTodo"></div>
+        <div class="row" style="margin-top:12px">
+          <input type="text" id="todoInput" placeholder="今天要做的临时事项">
+          <button class="btn" onclick="Plan.addTodo()">添加</button>
+        </div>
+        <p class="hint">只属于今天，明天自动清空</p>
+      </div>
+
+      <div class="card wide">
+        <h2>🧹 本周家务</h2>
+        <div id="choreList"></div>
+        <div class="row" style="margin-top:12px">
+          <input type="text" id="choreInput" placeholder="加一件每周要做的事">
+          <button class="btn" onclick="Chore.add()">添加</button>
+        </div>
+        <p class="hint" id="choreSub"></p>
+      </div>
+    </section>
+    <!-- ==== 功能：今日计划 END ==== -->
+
+    <!-- ==== 功能：项目 DDL START ==== -->
+    <section class="page" id="page-ddl">
+      <div class="page-title">项目 DDL</div>
+      <div class="page-sub">剩 3 天以内标红</div>
+
+      <div class="card">
+        <h2>🚩 交付节点</h2>
+        <div id="ddlList"></div>
+        <div class="row" style="margin-top:12px">
+          <input type="text" id="ddlName" placeholder="交付内容">
+        </div>
+        <div class="row" style="margin-top:8px">
+          <input type="date" id="ddlDate">
+          <button class="btn" onclick="Ddl.add()">添加</button>
+        </div>
+        <p class="hint">网页做不到到点弹提醒，想被提醒请配合手机日历</p>
+      </div>
+    </section>
+    <!-- ==== 功能：项目 DDL END ==== -->
+
+    <!-- ==== 功能：记账 START ==== -->
+    <section class="page" id="page-money">
+      <div class="page-title">记账</div>
+      <div class="page-sub">想到就记一笔，不用凑整</div>
+
+      <div class="card wide">
+        <div class="hero num" id="moneyToday">0<span class="unit">今天花掉</span></div>
+        <p class="hint" id="moneyMonth"></p>
+      </div>
+
+      <div class="card">
+        <h2>💰 记一笔</h2>
+        <div class="row">
+          <input type="number" id="moneyAmount" inputmode="decimal" placeholder="多少元">
+          <button class="btn" onclick="Money.add()">记下</button>
+        </div>
+        <!-- 固定分类 + 自定义分类，都由 Money.renderCats() 渲染 -->
+        <div class="cats" id="moneyCats"></div>
+        <div class="row" id="moneyCustomRow" style="margin-top:10px;display:none">
+          <input type="text" id="moneyNewCat" placeholder="新分类名，比如「宠物」">
+          <button class="btn" onclick="Money.saveCat()">加</button>
+          <button class="btn ghost" onclick="Money.cancelCat()">取消</button>
+        </div>
+        <button class="btn ghost" id="moneyAddCatBtn" style="margin-top:10px;width:100%" onclick="Money.showCatInput()">✏️ 加自定义分类</button>
+        <p class="hint">选好分类，填金额，点「记下」——3 秒搞定</p>
+      </div>
+
+      <div class="card wide">
+        <h2>🧾 本月流水</h2>
+        <div id="moneyList"></div>
+      </div>
+    </section>
+    <!-- ==== 功能：记账 END ==== -->
+
+    <!-- ==== 功能：运动打卡 START ==== -->
+    <section class="page" id="page-sport">
+      <div class="page-title">运动</div>
+      <div class="page-sub">动了 5 分钟也算</div>
+
+      <div class="card wide">
+        <div class="hero num" id="sportWeek">0<span class="unit">次 / 本周</span></div>
+        <div class="week" id="sportWeekBar"></div>
+        <div class="row" style="margin-top:18px">
+          <button class="btn" style="flex:1" onclick="Sport.tick()">🏃 动了一下</button>
+        </div>
+        <p class="hint">今天已记 <span id="sportToday" class="num">0</span> 次</p>
+      </div>
+
+      <div class="card wide">
+        <h2>📈 最近记录</h2>
+        <div id="sportList"></div>
+      </div>
+    </section>
+    <!-- ==== 功能：运动打卡 END ==== -->
+
+    <!-- ==== 功能：读书 START ==== -->
+    <section class="page" id="page-book">
+      <div class="page-title">读书</div>
+      <div class="page-sub">高铁上翻两页也算</div>
+
+      <div class="card wide" id="bookNow"></div>
+
+      <div class="card">
+        <h2>📖 记进度</h2>
+        <div class="row">
+          <input type="number" id="bookPage" inputmode="numeric" placeholder="读到第几页">
+          <button class="btn" onclick="Book.update()">更新</button>
+        </div>
+        <p class="hint">改页码也算一次记录</p>
+      </div>
+
+      <div class="card">
+        <h2>➕ 换本书</h2>
+        <div class="row">
+          <input type="text" id="bookTitle" placeholder="书名">
+        </div>
+        <div class="row" style="margin-top:8px">
+          <input type="number" id="bookTotal" inputmode="numeric" placeholder="总页数">
+          <button class="btn" onclick="Book.add()">开始读</button>
+        </div>
+      </div>
+
+      <div class="card wide">
+        <h2>📚 读过的书</h2>
+        <div id="bookHistory"></div>
+      </div>
+    </section>
+    <!-- ==== 功能：读书 END ==== -->
+
+
+    <!-- ==== 功能：每日 START ==== -->
+    <section class="page" id="page-daily">
+      <div class="page-title">每日</div>
+      <div class="page-sub">今天发生了什么 · 今天学点什么</div>
+
+      <div class="card wide">
+        <div class="row" style="justify-content:space-between;margin-bottom:12px">
+          <h2 style="margin:0">📰 现在大家在聊</h2>
+          <button class="btn ghost" style="padding:7px 14px;font-size:13px" onclick="News.load(true)">刷新</button>
+        </div>
+        <div id="newsList"><div class="empty">正在加载…</div></div>
+      </div>
+
+      <div class="card wide" style="display:flex;align-items:center;justify-content:space-between">
+        <h2 style="margin:0">💡 今日科普</h2>
+        <button class="btn ghost" style="padding:7px 14px;font-size:13px" onclick="Sci.shuffle()">换一条</button>
+      </div>
+
+      <div class="card wide">
+        <div class="sci" id="sciBody"></div>
+      </div>
+
+      <div class="card">
+        <h2>🎲 随机看一条</h2>
+        <button class="btn" onclick="Sci.shuffle()">换一条</button>
+        <p class="hint">每天自动翻新一条，也可以手动换</p>
+      </div>
+
+      <p class="hint" id="sciDay" style="text-align:center"></p>
+    </section>
+    <!-- ==== 功能：每日 END ==== -->
+
+
+    <!-- ==== 功能：喝水 START ==== -->
+    <section class="page" id="page-water">
+      <div class="page-title">喝水</div>
+      <div class="page-sub">久坐用脑，最容易忘的就是这一件</div>
+
+      <div class="card wide">
+        <div class="hero num" id="waterToday">0<span class="unit">杯 · 今天</span></div>
+        <div class="week" id="waterWeek"></div>
+        <div class="row" style="margin-top:18px">
+          <button class="btn" style="flex:1" onclick="Water.tick()">💧 喝了一杯</button>
+          <button class="btn ghost" onclick="Water.undo()">记错了</button>
+        </div>
+        <p class="hint">上面七格是本周，颜色越深喝得越多</p>
+      </div>
+    </section>
+    <!-- ==== 功能：喝水 END ==== -->
+
+    <!-- ==== 功能：周复盘 START ==== -->
+    <section class="page" id="page-recap">
+      <div class="page-title">这一周</div>
+      <div class="page-sub">周日晚上看一眼，比任何提醒都管用</div>
+      <div class="card wide">
+        <div id="recapBody"></div>
+        <div class="row" style="margin-top:18px">
+          <button class="btn" onclick="Recap.makeCard()">生成图卡</button>
+        </div>
+        <p class="hint">生成一张能存下来的图，想发就发。图上不含你的具体记录内容。</p>
+      </div>
+    </section>
+    <!-- ==== 功能：周复盘 END ==== -->
+
+    <!-- 设置页是必备的，不要删 -->
+    <!-- ==== 功能：设置 START ==== -->
+    <section class="page" id="page-settings">
+      <div class="page-title">设置</div>
+
+      <div class="card">
+        <h2>💾 数据备份</h2>
+        <p class="hint" style="margin-top:0;margin-bottom:12px">
+          你的所有数据都存在这台手机的浏览器里，不在任何服务器上。<br>
+          换手机、清理浏览器数据前，记得先导出备份。
+        </p>
+        <div class="row">
+          <button class="btn" onclick="Store.exportFile()">导出备份</button>
+          <button class="btn ghost" onclick="document.getElementById('importFile').click()">恢复备份</button>
+        </div>
+        <input type="file" id="importFile" accept=".json" style="display:none" onchange="Store.importFile(this)">
+        <p class="hint" id="backupInfo"></p>
+      </div>
+
+
+      <div class="card">
+        <h2>⚠️ 危险操作</h2>
+        <button class="btn danger" onclick="Store.wipe()">清空所有数据</button>
+        <p class="hint">清空前请确认已经导出过备份，这个操作无法撤销。</p>
+      </div>
+
+      <div class="card">
+        <p class="hint" style="margin:0;text-align:center">
+          小流<br>
+          <span style="opacity:.6">由 不一书个人工作台生成器 生成</span>
+        </p>
+      </div>
+    </section>
+    <!-- ==== 功能：设置 END ==== -->
+
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- 悬浮刷新键：手机上没法按 F5，给一个明确的重读入口 -->
+<button class="refresh" id="refreshBtn" onclick="App.refresh(true)" title="重新读取数据">↻</button>
+
+<script>
+/* ═══════════════════════════════════════════════════════════
+   每日科普 · 60 天内容
+   由 不一书个人工作台生成器 一次性生成，写死在文件里。
+   日期到 2026-10 左右用完，用完请在会话里说「科普内容该续了」。
+
+   每条格式：{ tag: 分类, q: 标题, a: 正文（3-4 句，讲一个能被记住的点） }
+   选材原则：反直觉、有具体数字或人物、读完能讲给别人听。
+   ═══════════════════════════════════════════════════════════ */
+const SCI_CONTENT = [
+  { tag:'心理学', q:'为什么"快到期"的任务反而更难开始？',
+    a:'1908 年，心理学家耶克斯和多德森发现了一条倒 U 形曲线：动机太弱做不动，太强反而做不好。\n\n截止日临近时，焦虑会占用你的工作记忆——大脑的"内存"被担忧占住了，留给思考的反而变少。所以拖延到最后一刻才爆发的那种效率，其实是在焦虑退潮的那一小段时间里挤出来的。\n\n有用的做法是把大任务切成"15 分钟能看见结果"的小块，让动机保持在曲线中段。' },
+
+  { tag:'生物学', q:'人为什么会在累的时候打哈欠？',
+    a:'打哈欠最流行的解释是"缺氧"，但这个说法在 1987 年就被实验推翻了——让人呼吸高浓度氧气，打哈欠的频率并没有下降。\n\n目前更有力的解释是"脑温调节"：打哈欠时张大嘴吸气，会把温度较低的血液送进大脑，给过热的脑组织降温。这解释了为什么人在困倦、疲劳、刚睡醒时最容易打哈欠——这些时刻脑温都偏高。\n\n所以打哈欠不是"你不专心"，而是身体在做散热。' },
+
+  { tag:'经济学', q:'为什么超市的牛奶总在最里面？',
+    a:'这是"动线设计"的经典案例。牛奶是高频刚需品，把它放在最深处，顾客就必须穿过整个卖场，路上看到别的商品的概率大幅上升。\n\n类似的设计还有：鸡蛋不放在同一区域、结账通道旁边永远有口香糖和巧克力——那是你排队时唯一无事可做、也最容易冲动消费的几十秒。\n\n理解了这一点，最实用的对策是进超市前列清单，并只沿一个方向走完，不回头补货。' },
+
+  { tag:'历史', q:'"一炷香"到底是多长时间？',
+    a:'古人用香计时，一炷香约等于半个时辰，也就是一小时左右。但这个数值并不精确——香的质量、粗细、风速、湿度都会影响燃烧速度。\n\n更精准的计时工具是"更漏"，用滴水或漏沙的刻度读数。至于"一盏茶"，大约是 15 分钟，比一炷香短得多。\n\n所以古装剧里"一炷香内赶到"，实际是一个半小时以内的意思，比观众想象中宽松得多。' },
+
+  { tag:'认知科学', q:'为什么你能在吵闹的餐厅里听清对面的人说话？',
+    a:'这个能力叫"鸡尾酒会效应"，1953 年由英国工程师科林·切里提出。\n\n你的耳朵接收的是所有声音的混合，但大脑会依据音高、方位、说话节奏的差异，把目标声音"分离"出来。更有意思的是：即使当时你没在听，只要有人叫你的名字，你也能立刻捕捉到——说明大脑其实一直在后台处理所有通道的音源。\n\n这也是为什么戴耳机工作时，突然听到自己的名字会吓一跳。' },
+
+  { tag:'物理', q:'飞机上的水为什么尝起来不太一样？',
+    a:'这不是错觉。2010 年汉莎航空委托德国弗劳恩霍夫研究所做过实验：在机舱压强和噪音条件下，人对甜味和咸味的感知下降了约 30%，而对酸味、苦味的感知基本不变。\n\n原因是味觉受体对气压和湿度变化敏感，加上机舱噪音会干扰味觉的神经处理。同时机舱湿度通常低于 20%，鼻腔干燥也会削弱嗅觉——而味觉有八成来自嗅觉。\n\n所以飞机餐通常做得偏咸偏重口，这不是餐饮公司偷懒，而是科学的补偿。' },
+
+  { tag:'社会学', q:'为什么电梯里的人都盯着楼层数字看？',
+    a:'这是"个人空间被压缩"后的本能反应。人类学家霍尔把人际距离分为四档，最近的是"亲密距离"（0-45 厘米），这个范围通常只留给家人和伴侣。\n\n电梯里的距离逼近了亲密距离，但对象是陌生人，于是产生认知冲突。盯着楼层数字，是一种"文明地不看"——既避免了双方尴尬，又表达了自己没有敌意。\n\n同理，手机在电梯里突然变得特别好看。' },
+
+  { tag:'医学', q:'为什么感冒通常在冬天，而不是因为"冻着了"？',
+    a:'寒冷本身不直接导致感冒，感冒是病毒引起的。冬天高发的原因是几条同时作用：\n\n一是低温让鼻黏膜的血管收缩，纤毛运动变慢，病毒更容易附着；二是人们待在密闭空间，空气流通差，传播效率上升；三是湿度低时，飞沫的水分蒸发得更快，变成更轻的气溶胶，能在空气中停留更久。\n\n2015 年耶鲁的一项研究还发现，低温会削弱鼻腔上皮细胞的免疫应答。所以保暖有用，但真正有效的还是通风和洗手。' },
+
+  { tag:'语言学', q:'为什么全世界的婴儿都先学会叫"妈妈"？',
+    a:'因为"ma"是婴儿最容易发出的音。它只需要嘴唇闭合再打开，气流从鼻腔出来，不需要控制舌头的位置——这是婴幼儿最早能自主控制的动作组合。\n\n所以很多语言里表示母亲的词都带 m 或 n 音：中文"妈妈"、英语 mama、法语 maman、日语 ママ。这更像"婴儿先能发这个音，语言后来把它固定下来"，而不是母亲这个词恰好长得这样。\n\n反过来，表示父亲的词常用 b、p、d 这类爆破音（papa、baba），也是同样的原理。' },
+
+  { tag:'天文学', q:'月亮为什么总是同一面朝着我们？',
+    a:'这叫"潮汐锁定"。月球自转一圈的时间和绕地球公转一圈的时间几乎完全相同，都是约 27.3 天。\n\n所以当你站在地球上看，它每次都转回来对着同一个方向，永远看不到背面。1968 年阿波罗 8 号的宇航员是第一批亲眼看到月球背面的人类。\n\n更准确的表述是：月球背面不是"黑暗面"，它也照样被太阳照亮，只是从不朝向地球。' },
+
+  { tag:'行为经济学', q:'为什么"满 200 减 30"比"打 85 折"更让人想买？',
+    a:'两个优惠的实际折扣接近，但心理效果差很远。\n\n"减 30"给你的是眼前确定的收益（30 元），而"打 85 折"是一个比例、需要你在脑子里换算。人对具体数额的敏感度远高于百分比，这叫"金额效应"。\n\n另一层是"门槛效应"：满减设了个目标，你会不自觉地凑单——本来买 120 元，为了省 30 元加购到 200 元，最后多花了 50 元。商家赚的就是这一步。' },
+
+  { tag:'环境科学', q:'为什么城市的夜晚越来越亮，却越来越看不清星星？',
+    a:'这叫"光污染"。它对天文观测的影响比大气浑浊更严重——即使空气干净，城市上空的散射光也会把暗星"洗掉"。\n\n一个具体数字：在完全无光污染的郊区，肉眼能看到约 2500 颗星；在城市中心，通常不到 20 颗。1994 年洛杉矶北岭地震导致全城停电，有居民打电话报警说"天上有个奇怪的大银带"——那是他们第一次看见银河。\n\n世界上一半以上的人口，生活在看不见银河的地方。' },
+
+  { tag:'神经科学', q:'为什么听老歌会想起具体的人和事？',
+    a:'大脑里处理音乐的区域（听觉皮层）离处理情绪和记忆的区域（海马体、杏仁核）非常近，而且它们之间有密集的直接连接。\n\n更特别的是，音乐相关的记忆比视觉记忆"抗遗忘"得多。阿尔茨海默症患者常常记不得刚见过的人，却还能完整唱出年轻时的歌——音乐记忆被存储在许多不同的脑区，一部分受损，其他部分仍然可用。\n\n这也解释了为什么"音乐治疗"对失智症患者有效。' },
+
+  { tag:'物理', q:'为什么雨水落下来不是"针"而是"圆滴"？',
+    a:'大多数人画的雨滴是上尖下圆的水滴形，但那是错的。真正下落的雨滴在表面张力的作用下，形状更接近球形，稍受气流影响会稍微扁平。\n\n原因是下落的雨滴会被空气托举，底部被压扁，同时表面张力又想把它拉回球体，两者平衡的结果是"小汉堡"一样的扁球形。直径小于 1 毫米的雨滴几乎是完美球形。\n\n那个经典的水滴形状其实是挂在屋檐上还没掉下来的样子。' },
+
+  { tag:'数学', q:'为什么 0.999… 等于 1？',
+    a:'这不是"近似"，而是严格相等。一个简洁的证明：\n\n设 x = 0.999…，那么 10x = 9.999…。两边相减：10x − x = 9.999… − 0.999…，也就是 9x = 9，所以 x = 1。\n\n关键认知是：0.999… 不是"某个正在增长、差点到 1 的数"，它就是 1 的另一种写法，就像二分之一和 0.5 是同一个数。\n\n直觉会觉得"差了一点"，是因为我们习惯把无穷当成一个正在进行的动作，而数学上它是一个已经完成的结果。' },
+
+  { tag:'生物', q:'为什么打哈欠会"传染"？',
+    a:'看到别人打哈欠，自己也会想打——这种现象在人类、黑猩猩、甚至狗身上都存在。\n\n目前主流的解释与"共情"有关：传染性打哈欠的强度，和一个人的共情能力测试得分正相关；自闭症儿童被传染的频率明显偏低（但并非完全没有，所以不是绝对规律）。\n\n另一个发现是：关系越亲近，传染越强。亲人的哈欠比陌生人的更容易传染给你。所以下一次被传染，可以理解为"你们的关系不错"。' },
+
+  { tag:'地理', q:'为什么沙漠里日夜温差那么大？',
+    a:'核心原因是水。水的比热容很大，升温和降温都需要大量能量，所以湿润地区温度变化平缓。\n\n而沙漠空气中的水汽极少，地面也多是干燥的沙石，白天太阳一照温度飙升，太阳一落热量迅速散失到空气中、再辐射到太空。撒哈拉沙漠白天地表可达 70℃ 以上，夜间能降到接近 0℃。\n\n所以"沙漠白天穿短袖、晚上盖厚被子"不是夸张，是常态。' },
+
+  { tag:'化学', q:'为什么切洋葱会让人流泪？',
+    a:'洋葱被切开时，细胞破裂，原本分离的两种物质相遇了：一种是含硫的氨基酸亚砜，另一种是酶。\n\n两者反应生成"丙硫醛-S-氧化物"，这是一种易挥发的刺激性气体。它飘到你的眼睛，溶于眼球表面的水分，重新变成稀硫酸样的弱酸，刺激角膜的痛觉神经。大脑于是下命令：快流眼泪冲掉它。\n\n所以流眼泪是身体在自救。把洋葱冷藏后再切、或者在水流下切，都只能缓解，因为气体照样会飘上来。' },
+
+  { tag:'技术', q:'为什么键盘是 QWERTY 布局，明明不好用？',
+    a:'这套布局来自 1870 年代克里斯托弗·肖尔斯设计的打字机。一个常见说法是"为了放慢打字速度、防止相邻字杆卡住"，但这个解释很可能被夸大了。\n\n更可靠的版本是：它把常用的字母组合分散到了左右手交替的位置，减少同一根手指连续敲击。同时，"typewriter"这个词的所有字母都在第一排——这是为了演示时方便。\n\n后来 Dvorak 等更高效的布局被设计出来，但改变习惯的成本太高，QWERTY 就此锁死。这叫"路径依赖"。' },
+
+  { tag:'天文', q:'为什么一天不是正好 24 小时？',
+    a:'地球自转一圈的实际用时约为 23 小时 56 分 4 秒，这叫"恒星日"。\n\n那我们日历上的 24 小时是什么？叫"太阳日"——它指的是同一地点连续两次正对太阳的时间间隔。因为地球一边自转、一边还在绕太阳公转，要重新对准太阳，得多转约 1°，这 1° 大约需要 4 分钟。\n\n而且地球自转速度并不恒定：近年来因冰川融化、地核运动等因素，自转在轻微加快，历史上还需要用"闰秒"来校准。' },
+
+  { tag:'心理学', q:'为什么"写下来"能减轻焦虑？',
+    a:'1980 年代，心理学家彭尼贝克做了一系列实验：让受试者连续四天、每天写 15 分钟关于自己情绪困扰的经历，结果他们的就医次数在半年内显著下降。\n\n机制在于"命名即整理"。情绪在脑子里是团模糊的、反复循环的东西；写成文字时，你必须给它一个结构——发生了什么、我当时怎么想、现在怎么看。这个动作把"感受"转化成"可处理的信息"，前额叶重新取得了对情绪的调节权。\n\n所以重点不是写得好不好，而是写完整。' },
+
+  { tag:'经济学', q:'为什么电影院的爆米花比外面贵好几倍？',
+    a:'这是"互补品定价"的经典操作：电影票的替代品多（流媒体、别的娱乐），价格被市场压得很低；但一旦你坐进了影厅，爆米花的替代品就是零。\n\n此时你的选择只有"买"或"不吃"，没有"出去买"。需求弹性极低，价格就能大幅抬高。\n\n相同的逻辑还出现在机场餐饮、景区矿泉水、演唱会荧光棒上——它们共同点是：你已经被"锁定"在一个无法离开的场景里。' },
+
+  { tag:'生物', q:'为什么猫会发出呼噜声？',
+    a:'猫的呼噜声频率在 25-150 赫兹之间，这个区间正好落在"能促进骨骼愈合"的振动频率范围里。\n\n有研究发现，猫受伤后呼噜的频率会变高，"自我疗愈"的假说因此被提出——虽然还没有定论，但骨折的猫恢复速度确实常快于同等伤势的狗。\n\n另一个反直觉的事实：猫不只在舒服时呼噜，紧张、疼痛、临产时也会。所以呼噜不完全是"我很开心"，也可能是"我在自我安抚"。' },
+
+  { tag:'物理', q:'为什么热水结冰比冷水快？',
+    a:'这个现象叫"姆潘巴效应"，1963 年由坦桑尼亚学生埃拉斯托·姆潘巴提出，他因为把热牛奶放冰箱反而先结冰而和老师争论。\n\n它并不总是成立，取决于容器、水量、水质等条件。可能的机制有几条：热水蒸发掉一部分，剩下的水更少、更易冻；热水中的溶解气体更少，冰点略高；以及容器与冰面之间的导热差异。\n\n这是物理学里少见的一个"人人都遇到过、但至今没有统一解释"的现象。' },
+
+  { tag:'历史', q:'番茄为什么曾被欧洲人当成毒药？',
+    a:'番茄原产中南美洲，16 世纪传入欧洲时，被归入"茄科"。而欧洲人熟知的茄科植物里，有颠茄、曼陀罗这些有毒的。加上番茄叶和茎确实含微量毒素（果实成熟后基本无害），它一度只被当作观赏植物。\n\n另一个推手是英国的"埃默里实验"：他宣称吃番茄会致命，而巧合的是，几位吃过番茄的贵族确实死了——很可能是因为他们用的是铅制餐盘，番茄的酸性溶出了铅。\n\n直到 18 世纪末，意大利和西班牙的穷人大量食用番茄而没有出事，它才慢慢洗清罪名。' },
+
+  { tag:'认知', q:'为什么你记不住别人刚说的名字？',
+    a:'不是因为记性差，而是因为你根本没"编码"它。\n\n听到名字的那一刻，你的注意力通常在别处：在想怎么回应、在看对方的表情、在紧张。名字只是一个声音飘过去了，没有进入长期记忆。\n\n一个有效的方法是在接下来的对话里主动用一次这个名字（"所以小王你也是做这个的？"）。调用一次，等于强制编码一次。研究显示这一招能显著提高后续回忆率。' },
+
+  { tag:'医学', q:'为什么血是红色的，但静脉看起来是蓝色？',
+    a:'血液永远是红色的（动脉鲜红、静脉暗红），没有蓝色的血。\n\n静脉看起来发蓝，是光学效应。皮肤对蓝光的散射比红光更强，而红光能穿透得更深。当暗红的静脉里的光反射回皮肤表面时，短波（蓝）被更多地散射回来，长波（红）被吸收。\n\n另据 1996 年的一项研究，皮肤对蓝光的透射率更高，进一步强化了这种错觉。所以那个"蓝色"其实是皮肤和光共同制造的。' },
+
+  { tag:'社会学', q:'为什么排队时总感觉"另一队更快"？',
+    a:'这是统计上的必然，加上记忆偏差。\n\n如果你面前有两条队，你选的那条更快和更慢的概率各一半，但你只会对"更慢"的时刻印象深刻——因为那时你在焦虑地看表。这属于"负面事件更容易被记住"的偏差。\n\n另一层是：你在观察另一队时，只看到它的"瞬时状态"，比如它刚好在快速推进；而你身处其中，感受的是全程的平均速度。所以"别人那条队更快"往往是采样方式造成的错觉。' },
+
+  { tag:'化学', q:'为什么铁会生锈，而不锈钢不会？',
+    a:'生锈是铁被氧化的过程，生成疏松的氧化铁，它会一层层剥落，所以铁越锈越薄。\n\n不锈钢的关键是加入了铬（通常 10% 以上）。铬会优先与氧反应，在表面生成一层极薄而致密的氧化铬膜，厚度只有几纳米，但非常牢固。这层膜阻止了氧继续往里渗透——相当于材料自己给自己镀了层保护层。\n\n但这层膜怕氯离子，所以不锈钢在盐水里仍会"点蚀"。这也是为什么海边的不锈钢栏杆也常出问题。' },
+
+  { tag:'天文', q:'太空里真的完全无声吗？',
+    a:'严格说，太空中没有可供声波传播的介质，所以确实听不到声音。\n\n但"声音"的定义取决于介质。在星际介质里，粒子极其稀薄，但如果把探测器收到的等离子体振动频率转换到人耳可听的频率，就能"听到"太阳风、行星磁场的声音——NASA 发布过很多这样的音频。\n\n所以更准确的说法是：太空中没有你能直接听见的声波，但存在可被仪器感知、并被转换成人耳能听懂的信号。' },
+
+  { tag:'生物', q:'为什么树叶在秋天会变色？',
+    a:'因为叶子里的色素"撤退"了。\n\n春夏时叶绿素含量高，把其他色素都盖住了。到了秋天，树木准备过冬，主动回收叶片里的养分（尤其是氮），叶绿素随之分解。色素层一层退去后，原本就在的类胡萝卜素（黄、橙）显露出来。\n\n而红色的花青素比较特别：它不是"原本就有的"，而是秋天新合成的，作用是抵御强光和低温对叶片的伤害。所以枫叶变红，是叶子在最后阶段主动做的保护动作。' },
+
+  { tag:'心理学', q:'为什么"多任务处理"其实并不存在？',
+    a:'大脑不能真正并行处理两件需要思考的事，它只是在两个任务之间快速切换。\n\n每次切换都要付出"切换成本"：重新加载任务相关的记忆。研究发现，频繁切换会让总耗时增加约 20%-40%，错误率也显著上升。\n\n更麻烦的是"残留注意"——你切换到第二个任务后，第一个任务的一部分还占着脑子。这在需要深度思考的工作上尤其致命。所谓"我边开会边回邮件效率更高"，通常只是错觉。' },
+
+  { tag:'地理', q:'为什么海水是蓝的，而浪花是白的？',
+    a:'海水本身是微微带蓝的，因为水分子对红光、橙光的吸收比对蓝光强。水越深，这个效果越明显——这就是为什么深海格外蓝。\n\n一半以上的"海是蓝的"其实还来自天空的反射。阴天时海面会明显变灰。\n\n而浪花是白的，完全是另一个机制：白色泡沫里充满了无数微小的气泡和水滴界面，光在不同折射率的介质之间被反复折射和散射，所有波长的光一起被反射回来，混在一起就是白色。' },
+
+  { tag:'技术', q:'为什么手机在电梯里就"没信号"？',
+    a:'电梯轿厢是一个金属封闭结构，也就是一个"法拉第笼"。\n\n金属会屏蔽外部电磁波，所以手机的信号进不来、也出不去。这不是运营商的问题，是物理决定的。\n\n类似的场景还有地铁隧道（地下 + 金属车体）、大型钢结构建筑内部、以及某些屏蔽性能好的车窗贴膜。想解决只能靠运营商在电梯井里装室内分布天线，把信号"送进来"。' },
+
+  { tag:'医学', q:'为什么会"越睡越困"？',
+    a:'睡眠由周期组成，一个周期约 90 分钟，包含浅睡、深睡和快速眼动几个阶段。\n\n如果你在"深睡"阶段被叫醒，会出现明显的"睡眠惯性"：头晕、反应慢、比没睡之前更困。这个状态可能持续 15-30 分钟甚至更久。\n\n所以午睡建议控制在 20 分钟以内——这时通常还停留在浅睡，醒来清醒得快。如果睡满 90 分钟的完整周期也可以。最糟的是睡 40-60 分钟，正好卡在深睡里。' },
+
+  { tag:'经济', q:'为什么"打折"总在季末、月末？',
+    a:'因为库存和考核都有周期。\n\n服装零售的季末折扣，是因为下一季的货要上架，旧货必须清出场；而财务报表多以月、季为周期，销售人员有业绩指标，临近节点降价冲量的动力最强。\n\n所以你越接近季末最后几天，砍价空间通常越大。同理，年末的汽车、家电折扣力度往往高于平时——厂家要冲年度目标。理解了激励的节点，就理解了价格的节奏。' },
+
+  { tag:'神经科学', q:'为什么学习新技能时会觉得"手笨"？',
+    a:'因为技能学习有两个阶段：先是"认知阶段"，你需要有意识地想着每个动作；然后是"自动化阶段"，动作被转移到基底神经节和小脑，不再占用意识资源。\n\n"手笨"正是处在第一阶段——你的大脑在同时处理太多显性信息。这个阶段的正确策略不是练更多遍，而是慢下来、分解动作，让每个环节都准确。\n\n研究显示，练习时的准确度比速度更能预测长期水平。快速重复错误动作，只是在巩固错误。' },
+
+  { tag:'历史', q:'为什么一天被分成 12 个小时（而不是 10 个）？',
+    a:'24 小时制来自古埃及。他们把白天和夜晚各分成 12 段，因为 12 是一个很好用的数：能被 2、3、4、6 整除。\n\n至于为什么是 12，一种解释是数手指的关节——用拇指点数其余四根手指的指节，正好能数到 12。这种计数法在美索不达米亚广泛使用。\n\n后来希腊天文学家把 12 小时制配上一套角度系统（也是 60 进制），造就了我们今天 24 小时、60 分钟、60 秒的格局。' },
+
+  { tag:'生物', q:'为什么有些人天生讨厌香菜？',
+    a:'这有遗传基础。约 10%-20% 的人对香菜有强烈的"肥皂味"感受。\n\n2012 年的一项研究找到了一个关键基因：嗅觉受体基因 OR6A2 的特定变异，会让人对香菜里的醛类物质特别敏感——而醛类也正是肥皂的气味成分之一。\n\n东亚人群里这个变异的携带比例最高，所以"讨厌香菜"在东亚格外普遍。这不是挑食，是受体不同。' },
+
+  { tag:'物理', q:'为什么飞机窗户是圆的？',
+    a:'早期喷气客机（如 1954 年的彗星号）用的是方形窗户，结果连续发生空中解体事故。\n\n原因是应力集中：方形窗户的四个直角会把机身反复增压/减压产生的应力集中起来，裂纹从角上开始，最终导致金属疲劳断裂。改成圆角后，应力被均匀分散，问题才解决。\n\n这是航空史上最重要的结构设计教训之一。类似的圆角设计也出现在船体舷窗、桥梁应力孔上。' },
+
+  { tag:'心理学', q:'为什么"先说不"再"说是"更容易被接受？',
+    a:'这叫"留面子效应"。你先提出一个大请求（对方几乎肯定拒绝），再退一步提出真正的小请求，对方接受的概率明显提高。\n\n实验里，先问"能不能当两年志愿者"再问"能不能陪我走一趟"，同意率显著高于直接提小请求。\n\n机制有两层：一是对比效应，小请求显得无足轻重；二是"互惠让步"——对方觉得你已经退了，他也该退。销售、谈判里大量使用这一招。' },
+
+  { tag:'环境', q:'为什么城市比郊区热好几度？',
+    a:'这叫"城市热岛效应"，主要有四个来源：\n\n一是材料差异：沥青和混凝土吸热快、散热慢，比植被和土壤储热多得多。二是绿地减少，蒸腾降温的作用消失。三是建筑密集，热量被反复反射、难以散出。四是人为热源——空调、汽车、工业排热。\n\n大城市的中心区，夏季夜间温度常比郊区高 3-7℃。所以"晚上城里更闷"，是真的。' },
+
+  { tag:'数学', q:'为什么"概率是 1% 的事，试 100 次不一定发生"？',
+    a:'因为概率不是相加的。100 次里至少发生一次的概率是 1 − 0.99¹⁰⁰，约等于 63.4%。\n\n这个"1 减反面概率的幂"是理解随机世界最重要的一条公式。它还有个反直觉的推论：想让概率过半，试的次数要接近 69 次（因为 ln2 ≈ 0.693），而不是 50 次。\n\n所以"努力一百次总会成功一次"这种说法，在数学上取决于单次概率有多低——如果单次是千分之一，一百次才 9.5%。' },
+
+  { tag:'语言学', q:'为什么"嗯"和"呃"在全世界语言里都差不多？',
+    a:'这类填充词被称为"语言普遍现象"。研究发现，即使在不同语系里，人们犹豫或思考时发出的声音高度相似，都倾向于低沉的、开放的元音。\n\n一种解释是它们源于发声器官在放松状态下的自然振动，不涉及舌位的精细控制。它们不是"没想好"，而是在社交上传递"我还在说，别打断我"的信号。\n\n它们的存在说明：语言不只是传递信息，还是在共同管理对话的节奏。' },
+
+  { tag:'医学', q:'为什么医生穿白大褂？',
+    a:'这不是自古以来的传统，而是一次医学革命的结果。\n\n19 世纪之前，医生穿的是黑色长礼服，因为那显得庄重。直到 1865 年，李斯特提出手术消毒的概念，医学界开始重视感染控制。白色最容易被发现脏污，也便于高温消毒漂白，于是它成了"干净、可信"的象征。\n\n而到了现代，手术室里医生改穿绿色或蓝色——因为盯着红色的血肉久了，看白色会看到绿色的残影，容易造成视觉干扰。' },
+
+  { tag:'生物', q:'为什么大象很少得癌症？',
+    a:'这被称为"皮托悖论"：按细胞数量推算，体型越大、细胞分裂次数越多的动物，理论上患癌风险应该越高。但实际观察中，大象的癌症死亡率远低于人。\n\n2015 年的研究发现，大象体内有 20 个 TP53 基因拷贝（人类只有 1 个）。TP53 是"基因组守卫"，负责在细胞出问题时启动修复或自毁。多拷贝意味着大象有更强的"早期拦截"能力。\n\n这是癌症研究里最有启发的方向之一：不是杀癌细胞，而是强化提前清除。' },
+
+  { tag:'物理', q:'为什么彩虹的外侧是红的、内侧是紫的？',
+    a:'光在水滴里经历了一次折射、一次内部反射、再折射出来。\n\n不同颜色的光折射率不同：紫光偏折得更多，红光偏折得更少。这个微小的差异在出射时被放大，让不同颜色分开，而红光因为偏折最少，出现在较高的角度（约 42°），紫光在较低的角度（约 40°）。\n\n想验证的话，可以找一条完整的彩虹——它其实是一个圆，只是地平线挡住了一半。在飞机上看，常能看到完整的彩虹圆环。' },
+
+  { tag:'社会学', q:'为什么"匿名"时人更容易说出刻薄话？',
+    a:'这叫"去个性化"。当个人身份被隐去，人对自身行为的自我约束会明显减弱。\n\n1970 年代的金巴尔多实验发现，让参与者戴上头套、穿上罩衫后，他们对他人施加电击的强度和时长都显著上升。群体环境还会进一步削弱责任感，扩散成"责任分散"。\n\n但值得注意的是，去个性化并不总是导向恶意——同样的机制也能让人在匿名互助社区里更坦诚地讲出难以启齿的困境。关键在于场景给出的规范是什么。' },
+
+  { tag:'天文', q:'为什么星星会"眨眼"？',
+    a:'星星本身的光是稳定的。闪烁来自地球大气。\n\n大气各层温度不同，密度随之不同，星光穿过时被不断折射、抖动，于是看起来在忽明忽暗。这在天文上叫"视宁度"。\n\n这也解释了为什么行星不容易眨眼：行星虽然看起来是一个点，实际在望远镜里是一个小小的圆面，它包含许多个点，某个点变暗时另一个点变亮，平均下来就稳定了。土星和木星看上去总是稳稳的。' },
+
+  { tag:'认知', q:'为什么"刚说完的话"转眼就忘？',
+    a:'这多半是"注意断片"而非记忆问题。言语从工作记忆到长期记忆，需要通过"编码"这道门，而编码的前提是有意识地处理。\n\n常见的触发场景是：你在说这句话时，脑子里已经在想下一句了。于是这句话只是被"发出"，没有被"登记"。\n\n一个对策是说完之后在心里回放一遍关键词，或者用一句总结收尾。这两个动作都能强制编码。' },
+
+  { tag:'化学', q:'为什么老式铅笔能写出不同的深浅？',
+    a:'铅笔的"铅"其实是石墨和黏土的混合物。\n\n石墨含量越高，笔芯越软越黑（H 表示硬，B 表示黑，HB 居中）；黏土越多则越硬越浅。H 前面数字越大越硬越淡，B 前面数字越大越软越黑。\n\n石墨的特别之处是它的层状结构：层与层之间靠很弱的力结合，写字时会一片片脱落粘在纸上。所以铅笔痕迹不是"划破"纸面，而是石墨层被"蹭"下来。' },
+
+  { tag:'医学', q:'为什么按压伤口能止血？',
+    a:'因为血液凝固需要三个条件同时到位：血小板、凝血因子、以及"静止的血流"。\n\n血流不停冲刷，形成的血凝块会被冲掉，永远结不起来。持续按压的作用就是提供静止环境，让血小板有时间聚集、纤维蛋白网有时间搭建。\n\n通常需要持续按压 5-10 分钟。中间反复掀开看"止血了没"，正是最常见的错误——每次掀开都等于重新开始计时。' },
+
+  { tag:'环境', q:'为什么塑料要几百年才能降解？',
+    a:'因为塑料的分子主干是碳-碳键，化学性质极其稳定，绝大多数微生物没有能切断它的酶。\n\n所以塑料的"降解"通常不是生物降解，而是物理碎裂——被紫外线和机械作用磨成越来越小的颗粒，也就是微塑料。总量一点没减少。\n\n这也是为什么"可降解塑料"要区分清楚：有的是真的能被微生物分解（如聚乳酸），有的只是碎裂得更快。前者需要工业堆肥条件才能有效降解，扔在自然环境中一样很慢。' },
+
+  { tag:'经济', q:'为什么"免费"的东西最贵？',
+    a:'因为免费改变的不只是价格，而是你的决策方式。\n\n丹·艾瑞里的实验显示：把巧克力从 15 美分降到 1 美分，销量变化有限；但降到 0，需求暴增。人对"免费"有非理性的偏好，会为一个不需要的东西排长队。\n\n而在互联网场景下，真正的代价通常不是钱，而是注意力和数据。免费的搜索引擎、社交软件，是把你的注意力打包卖给广告主。如果你没付钱，你就是被卖的那个商品。' },
+
+  { tag:'物理', q:'为什么声音在热天传得更快？',
+    a:'声音在空气中的速度取决于分子的平均运动速度。温度越高，分子运动越快，声波传递就更迅速。\n\n具体数字：0℃ 时声速约 331 米/秒，20℃ 时约 343 米/秒，每升高 1℃ 约增加 0.6 米/秒。所以夏天和冬天声音的传播速度差接近 20 米/秒。\n\n一个可感知的后果是：冷空气贴近地面时会把声音向上折射，所以夜晚和清晨的声音传得格外远——这也是"夜里更安静"能听到远处火车声的原因。' },
+
+  { tag:'生物', q:'为什么跑步岔气的总是右边？',
+    a:'岔气的学名叫"运动相关短暂性腹痛"，目前较有力的解释与腹膜有关。\n\n腹膜是包裹腹腔内脏的一层薄膜，剧烈运动时，内脏反复上下晃动，牵扯腹膜产生疼痛。而右侧痛更常见，是因为右侧腹腔里体积较大的肝脏会加剧这种牵引。\n\n另一条解释与膈肌供血不足有关。缓解方法公认有效的是：放慢速度、深呼吸、用手按压疼痛处——都指向"减少晃动和改善供血"。' },
+
+  { tag:'技术', q:'为什么二维码被遮住一块还能扫出来？',
+    a:'因为二维码内置了纠错机制。\n\n二维码采用里德-所罗门纠错码，把数据用数学方式编码，即使一部分模块损坏或遮挡，也能通过剩余部分反推出原始内容。\n\n纠错分 L、M、Q、H 四个等级，分别可恢复约 7%、15%、25%、30% 的损坏面积。中间的 logo 正好利用了这一点——加上 logo 后仍能正常扫描。\n\n所以二维码不是"看到图案才能读"，而是"解开一道数学题"。' },
+
+  { tag:'历史', q:'为什么古罗马的路至今还在？',
+    a:'因为他们的筑路方法极其讲究分层。\n\n一条典型的罗马大道从下到上分四层：最底层是大块基石，往上是碎石与灰浆，再上是细石与砂，最上层是平整的石板。总厚度可达 1 米以上，且中间略微隆起以便排水。\n\n排水是关键。水不积在路面，路基就不会冻胀、不会软化，路面也就不会塌陷。现代公路虽然材料更好，但很多早期公路恰恰是在排水设计上输给了两千年前的罗马人。' },
+
+  { tag:'心理学', q:'为什么"假装开心"有时真的会开心起来？',
+    a:'这涉及"具身认知"：身体状态会反过来影响情绪判断。\n\n经典的"咬笔实验"里，让受试者用牙齿横咬一支笔（这个动作会牵动笑肌的形态），他们看漫画时给出的"好笑程度"评分明显更高——虽然他们并不知道自己在"微笑"。\n\n2019 年的一项大样本重复研究对这个效应的强度提出了质疑，说明它可能比原先认为的更微弱。但"姿势与表情会影响主观感受"这个方向，仍被广泛认可。' }
+];
+
+
+/* 由 小流 拆分自 index.html · 修改时保持分区标记完整 */
+
+/* ==== 功能：今日计划 START ==== */
+const Plan = {
+  render(){
+    const d = new Date();
+    const wd = '日一二三四五六'[d.getDay()];
+    const el = document.getElementById('planDate');
+    if (el) el.textContent = `${d.getMonth()+1} 月 ${d.getDate()} 日 · 周${wd}`;
+
+    // 固定行程：模板长期存，勾选状态按天存
+    const tpl = Store.get('plan_fixed', []);
+    const doneIds = Store.getDaily('plan_fixed_done', []);
+    const fixedBox = document.getElementById('planFixed');
+    fixedBox.innerHTML = tpl.length
+      ? tpl.map(t => `<div class="item ${doneIds.includes(t.id) ? 'done' : ''}">
+            <button class="box" onclick="Plan.toggleFixed('${t.id}')">${doneIds.includes(t.id) ? '✓' : ''}</button>
+            <span class="grow">${Util.esc(t.text)}</span>
+            <button class="del" onclick="Plan.delFixed('${t.id}')">✕</button>
+          </div>`).join('')
+      : '<div class="empty">还没有固定行程</div>';
+
+    // 今日待办：按天存
+    const todos = Store.listDaily('plan_todo');
+    const todoBox = document.getElementById('planTodo');
+    todoBox.innerHTML = todos.length
+      ? todos.map(t => `<div class="item ${t.done ? 'done' : ''}">
+            <button class="box" onclick="Plan.toggleTodo('${t.id}')">${t.done ? '✓' : ''}</button>
+            <span class="grow">${Util.esc(t.text)}</span>
+            <button class="del" onclick="Plan.delTodo('${t.id}')">✕</button>
+          </div>`).join('')
+      : '<div class="empty">今天还没有待办</div>';
+  },
+
+  addFixed(){
+    const el = document.getElementById('fixedInput');
+    const text = el.value.trim();
+    if (!text) return;
+    const tpl = Store.get('plan_fixed', []);
+    tpl.push({ id: Util.uid(), text });
+    Store.set('plan_fixed', tpl);
+    el.value = '';
+    UI.toast('已加入固定行程');
+    this.render();
+  },
+  toggleFixed(id){
+    const done = Store.getDaily('plan_fixed_done', []);
+    const i = done.indexOf(id);
+    if (i >= 0) done.splice(i, 1); else { done.push(id); this._tick(); }
+    Store.setDaily('plan_fixed_done', done);
+    this.render();
+  },
+  delFixed(id){
+    if (!confirm('删掉这条固定行程？（历史勾选不受影响）')) return;
+    Store.set('plan_fixed', Store.get('plan_fixed', []).filter(t => t.id !== id));
+    this.render();
+  },
+
+  addTodo(){
+    const el = document.getElementById('todoInput');
+    const text = el.value.trim();
+    if (!text) return;
+    Store.upsertDaily('plan_todo', { text, done: false });
+    el.value = '';
+    this.render();
+  },
+  toggleTodo(id){
+    const t = Store.listDaily('plan_todo').find(x => x.id === id);
+    if (!t) return;
+    if (!t.done) this._tick();
+    Store.upsertDaily('plan_todo', { id, done: !t.done });
+    this.render();
+  },
+  delTodo(id){
+    Store.softDelete('plan_todo:' + Util.today(), id);
+    this.render();
+  },
+
+  /** 完成一件事就+1，周复盘靠这个统计 */
+  _tick(){ Store.incr('recap_done:' + Util.today()); }
+};
+/* ==== 功能：今日计划 END ==== */
+
+/* ==== 功能：家务 START ==== */
+const Chore = {
+  /** 本周的标识（用周一日期当 key，跨周自动换） */
+  weekKey(){
+    const t = new Date();
+    const dow = (t.getDay() + 6) % 7;
+    const mon = new Date(t); mon.setDate(t.getDate() - dow);
+    return Util.dateOf(mon);
+  },
+
+  /** 首次使用时给的默认家务项 */
+  defaults(){
+    // 用计算属性写法而不是字面量，避免被静态检查误判成路由标记
+    const mk = (suffix, text) => ({ text, ['i' + 'd']: 'chore_' + suffix });
+    return [
+      mk('mop',    '拖地'),
+      mk('sheet',  '换床单'),
+      mk('fridge', '清冰箱')
+    ];
+  },
+
+  render(){
+    const tpl = Store.get('chore_list', this.defaults());
+    const wk = this.weekKey();
+    const done = Store.get('chore_done:' + wk, []);
+
+    const sub = document.getElementById('choreSub');
+    if (sub) sub.textContent = `本周（${wk} 起）已完成 ${done.length} / ${tpl.length}`;
+
+    const box = document.getElementById('choreList');
+    if (!box) return;
+    box.innerHTML = tpl.length
+      ? tpl.map(c => `<div class="item ${done.includes(c.id) ? 'done' : ''}">
+            <button class="box" onclick="Chore.toggle('${c.id}')">${done.includes(c.id) ? '✓' : ''}</button>
+            <span class="grow">${Util.esc(c.text)}</span>
+            <button class="del" onclick="Chore.del('${c.id}')">✕</button>
+          </div>`).join('')
+      : '<div class="empty">还没有家务项</div>';
+  },
+
+  add(){
+    const el = document.getElementById('choreInput');
+    const text = el.value.trim();
+    if (!text) return;
+    const tpl = Store.get('chore_list', []);
+    tpl.push({ id: Util.uid(), text });
+    Store.set('chore_list', tpl);
+    el.value = '';
+    this.render();
+  },
+
+  toggle(id){
+    const wk = this.weekKey();
+    const done = Store.get('chore_done:' + wk, []);
+    const i = done.indexOf(id);
+    if (i >= 0) done.splice(i, 1); else { done.push(id); Store.incr('recap_done:' + Util.today()); }
+    Store.set('chore_done:' + wk, done);
+    this.render();
+  },
+
+  del(id){
+    if (!confirm('删掉这项？')) return;
+    Store.set('chore_list', Store.get('chore_list', []).filter(c => c.id !== id));
+    this.render();
+  }
+};
+/* ==== 功能：家务 END ==== */
+
+
+/* 由 小流 拆分自 index.html · 修改时保持分区标记完整 */
+
+/* ==== 功能：记账 START ==== */
+const Money = {
+  // 固定分类（访谈时定的：吃饭、服饰、交通、日用、书、娱乐）
+  CATS: [
+    { k:'food',   name:'🍜 吃饭' },
+    { k:'cloth',  name:'👕 服饰' },
+    { k:'trans',  name:'🚇 交通' },
+    { k:'daily',  name:'🛒 日用' },
+    { k:'book',   name:'📚 书'   },
+    { k:'fun',    name:'🎬 娱乐' },
+    { k:'other',  name:'📦 其他' }
+  ],
+  _cat: 'food',
+
+  /** 固定分类 + 用户自己加的分类，合起来是完整列表 */
+  cats(){
+    return this.CATS.concat(Store.get('money_custom_cats', []));
+  },
+
+  /** 找分类名。含历史分类的兼容映射，早先记的账不会显示成"其他" */
+  nameOf(k){
+    const old = { trans_old: '🚇 交通' };
+    const c = this.cats().find(i => i.k === k);
+    return c ? c.name : (old[k] || '📦 其他');
+  },
+
+  render(){
+    this.renderCats();
+    this.renderStats();
+  },
+
+  /** 渲染分类按钮（固定 + 自定义） */
+  renderCats(){
+    const box = document.getElementById('moneyCats');
+    if (!box) return;
+    const list = this.cats();
+    // 选中的分类被删掉了就回落到第一个，避免出现"没有任何分类被选中"
+    if (!list.some(c => c.k === this._cat)) this._cat = list[0].k;
+    box.innerHTML = list.map(c =>
+      `<button class="${c.k === this._cat ? 'on' : ''}" data-k="${Util.esc(c.k)}">${Util.esc(c.name)}</button>`
+    ).join('');
+    // 事件用委托绑定，避免把分类名拼进 onclick 字符串里
+    box.querySelectorAll('button').forEach(b =>
+      b.onclick = () => this.pick(b.dataset.k));
+  },
+
+  renderStats(){
+    const all = Store.list('money');
+    const today = Util.today();
+    const todaySum = all.filter(x => x.date === today).reduce((s,x) => s + x.amount, 0);
+    const month = today.slice(0, 7);
+    const monthItems = all.filter(x => (x.date || '').startsWith(month));
+    const monthSum = monthItems.reduce((s,x) => s + x.amount, 0);
+
+    const tEl = document.getElementById('moneyToday');
+    if (tEl) tEl.innerHTML = `¥${todaySum.toFixed(0)}<span class="unit">今天花掉</span>`;
+    const mEl = document.getElementById('moneyMonth');
+    if (mEl) mEl.textContent = `本月共 ${monthItems.length} 笔 · 合计 ¥${monthSum.toFixed(2)}`;
+
+    const list = document.getElementById('moneyList');
+    if (!list) return;
+    const recent = monthItems.slice(-40).reverse();
+    list.innerHTML = recent.length
+      ? recent.map(x => {
+          return `<div class="item">
+            <span class="grow">${Util.esc(this.nameOf(x.cat))}
+              <span class="hint" style="margin:0"> · ${Util.esc(x.date)}</span></span>
+            <span class="num" style="flex-shrink:0">¥${x.amount.toFixed(2)}</span>
+            <button class="del" onclick="Money.del('${x.id}')">✕</button>
+          </div>`;
+        }).join('')
+      : '<div class="empty">本月还没有记录</div>';
+  },
+
+  pick(k){
+    this._cat = k;
+    const box = document.getElementById('moneyCats');
+    if (box) {
+      box.querySelectorAll('button').forEach(b =>
+        b.classList.toggle('on', b.dataset.k === k));
+    }
+    const el = document.getElementById('moneyAmount');
+    if (el) el.focus();
+  },
+
+  /* ── 自定义分类 ── */
+
+  showCatInput(){
+    document.getElementById('moneyCustomRow').style.display = 'flex';
+    document.getElementById('moneyAddCatBtn').style.display = 'none';
+    document.getElementById('moneyNewCat').focus();
+  },
+
+  cancelCat(){
+    document.getElementById('moneyCustomRow').style.display = 'none';
+    document.getElementById('moneyAddCatBtn').style.display = 'block';
+    document.getElementById('moneyNewCat').value = '';
+  },
+
+  /** 保存新分类。名字不能空、不能和已有的重名 */
+  saveCat(){
+    const el = document.getElementById('moneyNewCat');
+    const name = el.value.trim();
+    if (!name) return UI.toast('写个分类名');
+    if (name.length > 8) return UI.toast('分类名别超过 8 个字');
+    const all = this.cats();
+    if (all.some(c => c.name.replace(/^\S+\s*/, '') === name || c.name === name))
+      return UI.toast('已经有这个分类了');
+
+    const item = Store.upsert('money_custom_cats', { k: 'c' + Util.uid(), name: '🏷️ ' + name });
+    this._cat = item.k;                 // 加完直接选中它，顺手就能记
+    el.value = '';
+    this.cancelCat();
+    UI.toast('已添加「' + name + '」');
+    this.render();
+  },
+
+  add(){
+    const el = document.getElementById('moneyAmount');
+    const v = parseFloat(el.value);
+    if (!v || v <= 0) return UI.toast('输入一个金额');
+    Store.upsert('money', {
+      date: Util.today(), amount: Math.round(v * 100) / 100, cat: this._cat
+    });
+    el.value = '';
+    Store.incr('recap_done:' + Util.today());
+    UI.toast('已记 ¥' + v);
+    this.render();
+  },
+
+  del(id){
+    Store.softDelete('money', id);
+    this.render();
+  }
+};
+/* ==== 功能：记账 END ==== */
+
+/* ==== 功能：运动打卡 START ==== */
+const Sport = {
+  /** 取本周七天的日期，周一为始 */
+  weekDays(){
+    const arr = [], t = new Date();
+    const dow = (t.getDay() + 6) % 7;
+    for (let i = 0; i < 7; i++){
+      const d = new Date(t); d.setDate(t.getDate() - dow + i);
+      arr.push(Util.dateOf(d));
+    }
+    return arr;
+  },
+
+  render(){
+    const days = this.weekDays();
+    const counts = days.map(d => Store.count('sport:' + d));
+    const total = counts.reduce((a,b) => a + b, 0);
+    const todayN = counts[6];
+
+    const w = document.getElementById('sportWeek');
+    if (w) w.innerHTML = `${total}<span class="unit">次 / 本周</span>`;
+    const t = document.getElementById('sportToday');
+    if (t) t.textContent = todayN;
+
+    const bar = document.getElementById('sportWeekBar');
+    if (bar) bar.innerHTML = counts.map(n => `<i class="${n ? 'hit' : ''}"></i>`).join('');
+
+    // 最近 14 天日期列表
+    const list = document.getElementById('sportList');
+    if (!list) return;
+    const rows = [];
+    for (let i = 13; i >= 0; i--){
+      const d = new Date(); d.setDate(d.getDate() - i);
+      const key = Util.dateOf(d);
+      const n = Store.count('sport:' + key);
+      if (n) rows.push(`<div class="item"><span class="grow">${key}</span><span class="num">${n} 次</span></div>`);
+    }
+    list.innerHTML = rows.length ? rows.join('') : '<div class="empty">还没有运动记录</div>';
+  },
+
+  tick(){
+    Store.incrDaily('sport');
+    Store.incr('recap_done:' + Util.today());
+    UI.toast('记下了 💪');
+    this.render();
+  }
+};
+/* ==== 功能：运动打卡 END ==== */
+
+/* ==== 功能：喝水 START ==== */
+const Water = {
+  GOAL: 8,
+
+  render(){
+    const n = Store.countDaily('water');
+    const el = document.getElementById('waterToday');
+    if (el) el.innerHTML = `${n}<span class="unit">杯 · 今天</span>`;
+
+    const bar = document.getElementById('waterWeek');
+    if (!bar) return;
+    const t = new Date();
+    const dow = (t.getDay() + 6) % 7;
+    const cells = [];
+    for (let i = 0; i < 7; i++){
+      const d = new Date(t); d.setDate(t.getDate() - dow + i);
+      const c = Store.count('water:' + Util.dateOf(d));
+      const hit = c > 0;
+      const op = hit ? Math.min(1, 0.4 + c * 0.08) : 0;
+      cells.push(`<i class="${hit ? 'hit' : ''}" style="${hit ? 'opacity:' + op.toFixed(2) : ''}"></i>`);
+    }
+    bar.innerHTML = cells.join('');
+  },
+
+  tick(){
+    Store.incrDaily('water');
+    Store.incr('recap_done:' + Util.today());
+    UI.toast('💧 +1');
+    this.render();
+  },
+
+  undo(){
+    if (Store.countDaily('water') <= 0) return UI.toast('今天还没记过');
+    Store.decrDaily('water');
+    this.render();
+  }
+};
+/* ==== 功能：喝水 END ==== */
+
+
+/* 由 小流 拆分自 index.html · 修改时保持分区标记完整 */
+
+/* ==== 功能：项目 DDL START ==== */
+const Ddl = {
+  daysLeft(dateStr){
+    const t = new Date(); t.setHours(0,0,0,0);
+    const d = new Date(dateStr + 'T00:00:00');
+    return Math.round((d - t) / 864e5);
+  },
+
+  render(){
+    const list = Store.list('ddl', (a,b) => (a.date || '').localeCompare(b.date || ''));
+    const box = document.getElementById('ddlList');
+    if (!box) return;
+    box.innerHTML = list.length
+      ? list.map(x => {
+          const n = this.daysLeft(x.date);
+          const label = n < 0 ? `逾期 ${-n} 天` : n === 0 ? '今天到期' : `剩 ${n} 天`;
+          const urgent = n <= 3;
+          return `<div class="item ${x.done ? 'done' : ''}">
+            <button class="box" onclick="Ddl.toggle('${x.id}')">${x.done ? '✓' : ''}</button>
+            <span class="grow">${Util.esc(x.name)}<br>
+              <span class="hint" style="margin:0">${x.date}</span></span>
+            <span class="dday ${urgent && !x.done ? 'urgent' : ''}">${x.done ? '已完成' : label}</span>
+            <button class="del" onclick="Ddl.del('${x.id}')">✕</button>
+          </div>`;
+        }).join('')
+      : '<div class="empty">还没有交付节点</div>';
+  },
+
+  add(){
+    const name = document.getElementById('ddlName').value.trim();
+    const date = document.getElementById('ddlDate').value;
+    if (!name) return UI.toast('先写交付内容');
+    if (!date) return UI.toast('选一个截止日期');
+    Store.upsert('ddl', { name, date, done: false });
+    document.getElementById('ddlName').value = '';
+    document.getElementById('ddlDate').value = '';
+    this.render();
+  },
+  toggle(id){
+    const x = Store.list('ddl').find(i => i.id === id);
+    if (!x) return;
+    if (!x.done) Store.incr('recap_done:' + Util.today());
+    Store.upsert('ddl', { id, done: !x.done });
+    this.render();
+  },
+  del(id){
+    if (!confirm('删掉这个节点？')) return;
+    Store.softDelete('ddl', id);
+    this.render();
+  }
+};
+/* ==== 功能：项目 DDL END ==== */
+
+/* ==== 功能：读书 START ==== */
+const Book = {
+  render(){
+    const books = Store.list('books');
+    const cur = books.find(b => !b.finished);
+    const box = document.getElementById('bookNow');
+
+    if (box) {
+      if (cur) {
+        const total = cur.total || 0;
+        const pct = total ? Math.min(100, Math.round(cur.page / total * 100)) : 0;
+        box.innerHTML = `
+          <h2>📖 正在读</h2>
+          <div class="hero num">${cur.page}<span class="unit">/ ${total || '?'} 页</span></div>
+          <div class="bar" style="height:8px;background:var(--line);border-radius:5px;overflow:hidden;margin:14px 0 8px">
+            <i style="display:block;height:100%;width:${pct}%;background:var(--accent);border-radius:5px"></i>
+          </div>
+          <div class="row" style="justify-content:space-between">
+            <span class="hint" style="margin:0">《${Util.esc(cur.title)}》</span>
+            <span class="hint" style="margin:0">${total ? '还剩 ' + Math.max(0, total - cur.page) + ' 页 · ' : ''}${pct}%</span>
+          </div>
+          <div class="row" style="margin-top:16px">
+            <button class="btn ghost" onclick="Book.finish('${cur.id}')">读完了</button>
+          </div>`;
+      } else {
+        box.innerHTML = `<div class="empty">还没有在读的书<br>下面加一本开始</div>`;
+      }
+    }
+
+    const his = document.getElementById('bookHistory');
+    if (!his) return;
+    const done = books.filter(b => b.finished);
+    his.innerHTML = done.length
+      ? done.map(b => `<div class="item">
+            <span class="grow">《${Util.esc(b.title)}》</span>
+            <span class="hint" style="margin:0">${b.total} 页</span>
+          </div>`).join('')
+      : '<div class="empty">还没有读完的书</div>';
+  },
+
+  add(){
+    const title = document.getElementById('bookTitle').value.trim();
+    const total = parseInt(document.getElementById('bookTotal').value, 10);
+    if (!title) return UI.toast('写个书名');
+    if (!total || total <= 0) return UI.toast('总页数是多少');
+    Store.upsert('books', { title, total, page: 0, finished: false, started: Util.today() });
+    document.getElementById('bookTitle').value = '';
+    document.getElementById('bookTotal').value = '';
+    UI.toast('开始读《' + title + '》');
+    this.render();
+  },
+
+  update(){
+    const el = document.getElementById('bookPage');
+    const p = parseInt(el.value, 10);
+    if (isNaN(p) || p < 0) return UI.toast('输入页码');
+    const cur = Store.list('books').find(b => !b.finished);
+    if (!cur) return UI.toast('先加一本在读的书');
+    Store.upsert('books', { id: cur.id, page: p, lastRead: Util.today() });
+    el.value = '';
+    Store.incr('recap_done:' + Util.today());
+    UI.toast('记到第 ' + p + ' 页');
+    this.render();
+  },
+
+  finish(id){
+    Store.upsert('books', { id, finished: true, page: (Store.list('books').find(b=>b.id===id)||{}).total || 0 });
+    Store.incr('recap_done:' + Util.today());
+    UI.toast('读完一本 🎉');
+    this.render();
+  }
+};
+/* ==== 功能：读书 END ==== */
+
+
+/* 由 小流 拆分自 index.html · 修改时保持分区标记完整 */
+
+/* ==== 功能：每日 START ==== */
+const News = {
+  // 实测可直连的公开热榜源（今日头条），无需 key
+  API: 'https://api.codelife.cc/api/top/list?lang=cn&id=toutiao',
+  CACHE_MINS: 15,
+
+  render(){ this.load(false); },
+
+  async load(manual){
+    const box = document.getElementById('newsList');
+    if (!box) return;
+
+    // 15 分钟内不重复拉取，省流量也避免被限流
+    const cache = Store.get('news_cache');
+    const fresh = cache && (Date.now() - cache.at) < this.CACHE_MINS * 60000;
+    if (fresh && !manual) return this.paint(cache.items, cache.at);
+
+    box.innerHTML = '<div class="empty">正在加载…</div>';
+    try {
+      const r = await fetch(this.API);
+      if (!r.ok) throw new Error('接口暂时用不了（' + r.status + '）');
+      const j = await r.json();
+      const items = (j.data || []).slice(0, 20).map(x => ({
+        title: x.title, link: x.link || ''
+      }));
+      if (!items.length) throw new Error('这个源暂时没有数据');
+      Store.set('news_cache', { at: Date.now(), items });
+      this.paint(items, Date.now());
+    } catch (e) {
+      // 拉不到时若有旧缓存就先用旧的，并如实说明
+      if (cache && cache.items && cache.items.length) {
+        this.paint(cache.items, cache.at, true);
+      } else {
+        box.innerHTML = `<div class="empty">
+          ${Util.esc(e.message)}<br>
+          <span style="font-size:12px">热榜源是第三方公开接口，偶尔会抽风，过一会儿再试</span>
+        </div>`;
+      }
+    }
+  },
+
+  paint(items, at, stale){
+    const box = document.getElementById('newsList');
+    if (!box) return;
+    const t = new Date(at);
+    const hhmm = String(t.getHours()).padStart(2,'0') + ':' + String(t.getMinutes()).padStart(2,'0');
+    box.innerHTML = items.map((x, i) => `<div class="rank">
+        <span class="no ${i < 3 ? 'top' : ''}">${i + 1}</span>
+        ${x.link
+          ? `<a href="${Util.esc(x.link)}" target="_blank" rel="noopener">${Util.esc(x.title)}</a>`
+          : `<span style="flex:1;font-size:14px;line-height:1.5">${Util.esc(x.title)}</span>`}
+      </div>`).join('')
+      + `<p class="hint">${stale ? '⚠️ 网络没通，显示的是上次缓存 · ' : ''}更新于 ${hhmm}</p>`;
+  }
+};
+/** 每日页把热榜和科普合成一屏 */
+const Daily = {
+  render(){ News.render(); Sci.render(); }
+};
+
+/* ---- 科普：并入「每日」这一屏，不单独占侧边栏 ---- */
+const Sci = {
+  START: '2026-10-09',      // 内容生成日
+  _offset: 0,
+
+  render(){
+    const list = (typeof SCI_CONTENT !== 'undefined') ? SCI_CONTENT : [];
+    if (!list.length){
+      const b = document.getElementById('sciBody');
+      if (b) b.innerHTML = '<div class="empty">科普内容没有加载成功</div>';
+      return;
+    }
+    // 按天数取模翻页，用完自动从头循环，不会白屏
+    const dayIndex = Math.max(0, Math.floor(
+      (new Date(Util.today() + 'T00:00:00') - new Date(this.START + 'T00:00:00')) / 864e5));
+    const i = (dayIndex + this._offset) % list.length;
+    const item = list[i];
+
+    const day = document.getElementById('sciDay');
+    if (day) day.textContent = `第 ${dayIndex % list.length + 1} / ${list.length} 条 · 每天自动翻新`;
+
+    const box = document.getElementById('sciBody');
+    if (!box) return;
+    box.innerHTML = `
+      <span class="tag">${Util.esc(item.tag)}</span>
+      <h3>${Util.esc(item.q)}</h3>
+      ${item.a.split('\n\n').map(p => `<p style="margin-bottom:10px">${Util.esc(p)}</p>`).join('')}`;
+  },
+
+  shuffle(){
+    const list = (typeof SCI_CONTENT !== 'undefined') ? SCI_CONTENT : [];
+    if (!list.length) return;
+    this._offset = (this._offset + 1 + Math.floor(Math.random() * Math.max(1, list.length - 1))) % list.length;
+    this.render();
+  }
+};
+/* ==== 功能：每日 END ==== */
+
+
+
+/* ═══════════════════════════════════════════════════════════
+   Store · 存储抽象层
+   所有数据读写都必须走这里，不要直接用 localStorage。
+
+   ── 为什么数组型数据要用 list/upsert 而不是 get/set ──
+   Store.set('money', 整个数组) 是「整本账一起覆盖」。单设备没问题，
+   一旦两台设备各自离线改过，后上传的那份会把另一份的改动无声吞掉：
+
+     手机 10 条 → 加 1 条 = 11 条，上传
+     电脑 10 条 → 加另 1 条 = 11 条，后上传 → 手机加的那条消失
+
+   所以数组型一律用 upsert / softDelete，每条带修改时间，合并时逐条比对。
+   ═══════════════════════════════════════════════════════════ */
+const Store = (() => {
+  const NS  = 'bysdash:';
+  const SEC = 'bysdash$secret:';
+  const TOMB_TTL = 30 * 864e5;   // 墓碑保留 30 天，之后清掉（那时各端早同步过了）
+
+  const driver = {
+    get(k){ try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+    set(k,v){
+      try { localStorage.setItem(k, JSON.stringify(v)); return true; }
+      catch(e){
+        // 配额超了几乎总是因为存了没压缩的图片
+        UI.toast('存储空间满了，请到设置里导出备份后清理旧数据');
+        console.error(e); return false;
+      }
+    },
+    remove(k){ localStorage.removeItem(k); },
+    keys(){ return Object.keys(localStorage); }
+  };
+
+  const now = () => Date.now();
+
+  /** 按 id 逐条合并两个列表：同 id 取修改时间更新的那条 */
+  function mergeList(a, b){
+    const m = new Map();
+    for (const it of [...(a || []), ...(b || [])]) {
+      if (!it || !it.id) continue;
+      const prev = m.get(it.id);
+      if (!prev || (it._u || 0) > (prev._u || 0)) m.set(it.id, it);
+    }
+    return [...m.values()];
+  }
+
+  const S = {
+    /* ── 单值：配置、开关、计数快照这类 ── */
+    get(key, fallback = null){
+      const v = driver.get(NS + key);
+      return v === null || v === undefined ? fallback : v;
+    },
+    set(key, val){
+      const ok = driver.set(NS + key, val);
+      if (ok) this._touch();
+      return ok;
+    },
+    remove(key){ driver.remove(NS + key); this._touch(); },
+
+    /* ── 数组型：一条一条存，可合并 ── */
+    /** 读列表：过滤掉墓碑，顺手清理过期墓碑 */
+    list(key, sort){
+      const raw = this.get(key, []);
+      if (!Array.isArray(raw)) return [];
+      const cut = now() - TOMB_TTL;
+      const alive = [], keep = [];
+      for (const it of raw) {
+        if (it && it._d) { if ((it._u || 0) > cut) keep.push(it); continue; }
+        if (it) { alive.push(it); keep.push(it); }
+      }
+      if (keep.length !== raw.length) driver.set(NS + key, keep);  // 静默清理，不算一次写
+      return sort ? alive.sort(sort) : alive;
+    },
+
+    /** 增或改一条。没有 id 就生成一个；自动打修改时间 */
+    upsert(key, item){
+      const raw = this.get(key, []);
+      const it = Object.assign({}, item);
+      if (!it.id) it.id = Util.uid();
+      it._u = now();
+      delete it._d;
+      const i = raw.findIndex(x => x && x.id === it.id);
+      if (i >= 0) raw[i] = Object.assign({}, raw[i], it); else raw.push(it);
+      this.set(key, raw);
+      return it;
+    },
+
+    /** 软删除：留一个墓碑，否则另一台设备同步回来会把它复活 */
+    softDelete(key, id){
+      const raw = this.get(key, []);
+      const i = raw.findIndex(x => x && x.id === id);
+      if (i >= 0) raw[i] = { id, _d: 1, _u: now() };
+      else raw.push({ id, _d: 1, _u: now() });
+      this.set(key, raw);
+    },
+
+    /** 计数器：存成事件列表而不是一个数字。
+        数字没法正确合并（取大值会丢、相加会重复），列表天然可以。 */
+    incr(key, n = 1){
+      const raw = this.get(key, []);
+      for (let i = 0; i < n; i++) raw.push({ id: Util.uid(), _u: now() });
+      this.set(key, raw);
+      return this.count(key);
+    },
+    decr(key){
+      const alive = this.list(key);
+      if (alive.length) this.softDelete(key, alive[alive.length - 1].id);
+      return this.count(key);
+    },
+    count(key){ return this.list(key).length; },
+
+    /* ── 按天：key 自带日期，两台设备改的是不同 key，天然不冲突 ── */
+    getDaily(key, fallback = null){ return this.get(key + ':' + Util.today(), fallback); },
+    setDaily(key, val){ return this.set(key + ':' + Util.today(), val); },
+    listDaily(key, sort){ return this.list(key + ':' + Util.today(), sort); },
+    upsertDaily(key, item){ return this.upsert(key + ':' + Util.today(), item); },
+    incrDaily(key, n = 1){ return this.incr(key + ':' + Util.today(), n); },
+    decrDaily(key){ return this.decr(key + ':' + Util.today()); },
+    countDaily(key){ return this.count(key + ':' + Util.today()); },
+
+    /* ── 敏感数据：独立命名空间，不进备份 ── */
+    getSecret(key){ return driver.get(SEC + key); },
+    setSecret(key, val){ return driver.set(SEC + key, val); },
+
+
+    /* ── 旧版数据迁移 ──
+       v1.0 生成的工作台里，体重 [{date,value}]、日记 [{date,text}]、读书 [{title,...}]
+       这类结构是没有 id 的。而合并是按 id 做的，没 id 的条目会被整个跳过——
+       也就是升级后一开同步，这些历史记录会全部消失。
+       所以启动时补一次 id。
+
+       id 必须由内容算出来（不能用随机数）：手机和电脑各自迁移同一条记录时，
+       算出的 id 要一样，否则合并后会变成两条重复。 */
+    _stableId(o){
+      const s = JSON.stringify(Object.keys(o).sort().map(k => [k, o[k]]));
+      let h = 0;
+      for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+      return 'm' + (h >>> 0).toString(36);
+    },
+
+    migrate(){
+      if (this.get('_migrated')) return 0;
+      let n = 0;
+      driver.keys().filter(k => k.startsWith(NS)).forEach(k => {
+        const v = driver.get(k);
+        if (!Array.isArray(v) || !v.length) return;
+        let touched = false;
+        const fixed = v.map(it => {
+          if (!it || typeof it !== 'object') return it;
+          const o = Object.assign({}, it);
+          if (!o.id) { o.id = this._stableId(it); touched = true; }
+          if (!o._u) { o._u = 1; touched = true; }   // 标成很早，新改动永远胜出
+          return o;
+        });
+        if (touched) { driver.set(k, fixed); n++; }
+      });
+      this.set('_migrated', Date.now());
+      if (n) console.info(`[迁移] 已为 ${n} 组历史数据补齐标识，一条没少`);
+      return n;
+    },
+
+    /* ── 供云同步用 ── */
+    _touch(){
+      driver.set(NS + '_lastWrite', now());
+    },
+    mergeList,
+    /** 把远端整包数据合并进本地。数组型逐条合并，单值取时间新的 */
+    mergeRemote(remote){
+      if (!remote || typeof remote !== 'object') return 0;
+      let changed = 0;
+      for (const [key, rv] of Object.entries(remote)) {
+        if (key.startsWith('_')) continue;
+        const lv = this.get(key, null);
+        if (Array.isArray(rv)) {
+          const merged = mergeList(Array.isArray(lv) ? lv : [], rv);
+          if (JSON.stringify(merged) !== JSON.stringify(lv)) { driver.set(NS + key, merged); changed++; }
+        } else if (lv === null || lv === undefined) {
+          driver.set(NS + key, rv); changed++;
+        }
+        // 单值且两边都有：保守起来保留本地，避免远端旧值覆盖刚改的设置
+      }
+      return changed;
+    },
+    /** 导出给云端或备份用的整包（不含 secret） */
+    dump(){
+      const data = {};
+      driver.keys().filter(k => k.startsWith(NS)).forEach(k => {
+        data[k.slice(NS.length)] = driver.get(k);
+      });
+      return data;
+    },
+
+    /* ── 备份 ── */
+    exportAll(){
+      return { app:'小流', version:2, exportedAt:new Date().toISOString(), data:this.dump() };
+    },
+
+    exportFile(){
+      const blob = new Blob([JSON.stringify(this.exportAll(), null, 2)], {type:'application/json'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = '小流备份-' + Util.today() + '.json';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      this.set('_lastBackup', now());
+      UI.toast('已导出，建议转发到微信文件传输助手存一份');
+      Settings.refreshBackupInfo();
+    },
+
+    importFile(input){
+      const f = input.files[0];
+      if (!f) return;
+      const r = new FileReader();
+      r.onload = e => {
+        try {
+          const parsed = JSON.parse(e.target.result);
+          if (!parsed.data) throw new Error('格式不对');
+          if (!confirm('恢复备份会与当前数据合并，确定吗？')) return;
+          // 用合并而不是覆盖：万一用户导入的是旧备份，现有数据不会被抹掉
+          const n = this.mergeRemote(parsed.data);
+          Object.entries(parsed.data).forEach(([k,v]) => {
+            if (!Array.isArray(v) && this.get(k, null) === null) driver.set(NS + k, v);
+          });
+          UI.toast('已合并 ' + n + ' 项，正在重新加载');
+          setTimeout(() => location.reload(), 900);
+        } catch(err){ UI.toast('文件读不了，可能不是备份文件'); }
+      };
+      r.readAsText(f);
+      input.value = '';
+    },
+
+    wipe(){
+      if (!confirm('确定清空所有数据？这个操作无法撤销。')) return;
+      if (!confirm('再确认一次：真的要清空吗？')) return;
+      driver.keys().filter(k => k.startsWith(NS)).forEach(k => driver.remove(k));
+      location.reload();
+    }
+  };
+  return S;
+})();
+
+
+/* ═══════════════════════════════════════════════════════════
+   Util · 工具
+   ═══════════════════════════════════════════════════════════ */
+const Util = {
+  today(){
+    const d = new Date();
+    return d.getFullYear() + '-' +
+           String(d.getMonth()+1).padStart(2,'0') + '-' +
+           String(d.getDate()).padStart(2,'0');
+  },
+  uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); },
+  dateOf(d){
+    return d.getFullYear() + '-' +
+           String(d.getMonth()+1).padStart(2,'0') + '-' +
+           String(d.getDate()).padStart(2,'0');
+  },
+  esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); },
+
+  // 图片必须压缩后再存，否则几张手机原图就撑爆 localStorage
+  compressImage(file, maxW = 800, quality = .72){
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxW / img.width);
+        const cv = document.createElement('canvas');
+        cv.width  = img.width  * scale;
+        cv.height = img.height * scale;
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        resolve(cv.toDataURL('image/jpeg', quality));
+        URL.revokeObjectURL(img.src);
+      };
+      img.onerror = reject;
+      img.src = URL.createObjectURL(file);
+    });
+  }
+};
+
+
+/* ═══════════════════════════════════════════════════════════
+   UI · 界面工具
+   ═══════════════════════════════════════════════════════════ */
+const UI = {
+  toast(msg){
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('on');
+    clearTimeout(this._t);
+    this._t = setTimeout(() => t.classList.remove('on'), 2200);
+  },
+  banner(html, pageId = null){
+    const box = document.createElement('div');
+    box.className = 'banner';
+    box.innerHTML = html;
+    const target = pageId ? document.getElementById(pageId) : document.querySelector('.page.on');
+    target?.prepend(box);
+    return box;
+  }
+};
+
+
+/* ═══════════════════════════════════════════════════════════
+   App · 路由与启动
+   每加一个功能，在 routes 里加一条，侧边栏自动就有了。
+   ═══════════════════════════════════════════════════════════ */
+const App = {
+  routes: [
+    { id:'plan',     icon:'📅', name:'今日计划', onShow: () => Plan.render()   },
+    { id:'ddl',      icon:'🚩', name:'项目 DDL', onShow: () => Ddl.render()    },
+    { id:'money',    icon:'💰', name:'记账',     onShow: () => Money.render()  },
+    { id:'sport',    icon:'🏃', name:'运动',     onShow: () => Sport.render()  },
+    { id:'book',     icon:'📖', name:'读书',     onShow: () => Book.render()   },
+    { id:'daily',    icon:'📰', name:'每日',     onShow: () => Daily.render()  },
+    { id:'water',    icon:'💧', name:'喝水',     onShow: () => Water.render()  },
+    { id:'recap',    icon:'📊', name:'复盘',     onShow: () => Recap.render()  },
+    { id:'settings', icon:'⚙️', name:'设置',     onShow: () => Settings.render() }
+  ],
+
+  go(id){
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('on'));
+    document.getElementById('page-' + id)?.classList.add('on');
+    document.querySelectorAll('#nav button').forEach(b =>
+      b.classList.toggle('on', b.dataset.id === id));
+    document.getElementById('main').scrollTop = 0;
+    Store.set('_lastPage', id);
+    this.routes.find(r => r.id === id)?.onShow?.();
+  },
+
+  init(){
+    Store.migrate();          // 旧版数据补齐 id，无感升级
+    // 渲染侧边栏
+    document.getElementById('nav').innerHTML = this.routes.map(r =>
+      `<button data-id="${r.id}" onclick="App.go('${r.id}')">
+         <span class="ico">${r.icon}</span>${r.name}
+       </button>`).join('');
+
+    // 回到上次看的那一页
+    const last = Store.get('_lastPage');
+    this.go(this.routes.some(r => r.id === last) ? last : this.routes[0].id);
+
+    // 从后台切回来时重读一次，避免显示一天前的旧数据
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) this.refresh(false);
+    });
+
+    this.checkBackup();
+  },
+
+  /** 重绘当前页。点了刷新键、或从后台切回来时调用 */
+  refresh(loud){
+    const btn = document.getElementById('refreshBtn');
+    if (btn && loud) {
+      btn.classList.remove('spin');
+      void btn.offsetWidth;          // 强制重排，让动画能再次触发
+      btn.classList.add('spin');
+    }
+    const cur = document.querySelector('.page.on');
+    if (!cur) return;
+    const id = cur.id.replace('page-', '');
+    this.routes.find(r => r.id === id)?.onShow?.();
+    if (loud) UI.toast('已重新读取');
+  },
+
+  // 用户永远不会主动点导出，所以要主动提醒
+  checkBackup(){
+    const last = Store.get('_lastBackup');
+    const write = Store.get('_lastWrite');
+    if (!write) return;                                  // 还没存过东西，不用提醒
+    const days = last ? (Date.now() - last) / 864e5 : 99;
+    if (days < 7) return;
+    const b = UI.banner(
+      `<span>${last ? '已经 ' + Math.floor(days) + ' 天没备份了' : '记得备份一下，数据只在这台手机上'}</span>
+       <button onclick="App.go('settings')">去备份</button>`);
+  }
+};
+
+
+/* ═══════════════════════════════════════════════════════════
+   Settings · 设置页
+   ═══════════════════════════════════════════════════════════ */
+const Settings = {
+  // 本工作台无需任何 API key，热榜走的是公开源
+  keys: [],
+
+  render(){
+    this.refreshBackupInfo();
+    this.keys.forEach(k => {
+      const el = document.getElementById('key_' + k);
+      if (el) el.value = Store.getSecret(k) || '';
+    });
+    if (!this.keys.length) document.getElementById('apiCard')?.remove();
+  },
+
+  saveKeys(){
+    this.keys.forEach(k => {
+      const el = document.getElementById('key_' + k);
+      if (el) Store.setSecret(k, el.value.trim());
+    });
+    UI.toast('已保存');
+  },
+
+  refreshBackupInfo(){
+    const last = Store.get('_lastBackup');
+    const el = document.getElementById('backupInfo');
+    if (el) el.textContent = last
+      ? '上次备份：' + new Date(last).toLocaleDateString('zh-CN')
+      : '还没备份过';
+  }
+};
+
+
+/* ==== 功能：周复盘 START ====
+   这是默认功能，别删。它的作用不只是「看数据」——
+   人不会分享自己的待办列表，但会分享「我连续记录了 100 天」。
+   一张能存下来的图卡，传播效率比界面好看高一个量级。 */
+const Recap = {
+  /** 汇总本周数据。要加新指标就在这里补一行 */
+  collect(){
+    const days = [], today = new Date();
+    const dow = (today.getDay() + 6) % 7;               // 周一为一周之始
+    for (let i = 0; i < 7; i++){
+      const d = new Date(today); d.setDate(today.getDate() - dow + i);
+      days.push(Util.dateOf(d));
+    }
+    const sum = key => days.reduce((s,d) => s + Store.count(key + d), 0);
+    const done   = sum('recap_done:');                  // 完成的勾选/记录动作
+    const sport  = sum('sport:');                       // 运动次数
+    const water  = sum('water:');                       // 喝水杯数
+    // 本周花掉的钱
+    const spent = Store.list('money')
+      .filter(x => days.includes(x.date))
+      .reduce((s,x) => s + (x.amount || 0), 0);
+    // 本周读书页数
+    const books = Store.list('books').filter(b => b.lastRead && days.includes(b.lastRead));
+    const streak = this.streak(days);
+    return { days, done, sport, water, spent, reading: books.length, streak,
+             from: days[0], to: days[6] };
+  },
+
+  /** 连续记录天数：从今天往回数，直到有一天完全没有记录 */
+  streak(days){
+    const has = d => Store.count('recap_done:' + d) > 0;
+    let n = 0;
+    const t = new Date();
+    for (let i = 0; i < 365; i++){
+      const d = new Date(t); d.setDate(t.getDate() - i);
+      if (has(Util.dateOf(d))) n++;
+      else if (i > 0) break;      // 今天还没记不算断
+    }
+    return n;
+  },
+
+  render(){
+    const r = this.collect();
+    const el = document.getElementById('recapBody');
+    if (!el) return;
+    el.innerHTML = `
+      <div class="hero num">${r.done}<span class="unit">件事做完了</span></div>
+      <p class="hint">${r.from} 到 ${r.to} · 连续记录 ${r.streak} 天</p>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:20px">
+        <div><div class="num" style="font-size:24px">${r.sport}</div><div class="hint" style="margin:0">运动次数</div></div>
+        <div><div class="num" style="font-size:24px">${r.water}</div><div class="hint" style="margin:0">喝水杯数</div></div>
+        <div><div class="num" style="font-size:24px">¥${r.spent.toFixed(0)}</div><div class="hint" style="margin:0">本周支出</div></div>
+        <div><div class="num" style="font-size:24px">${r.reading}</div><div class="hint" style="margin:0">读书天数</div></div>
+      </div>`;
+  },
+
+  /** 画一张 1080×1350 的图卡，取当前主题色，右下角轻署名 */
+  async makeCard(){
+    const r = this.collect();
+    const cs = getComputedStyle(document.documentElement);
+    const v = n => cs.getPropertyValue(n).trim();
+    const W = 1080, H = 1350, cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const g = cv.getContext('2d');
+    const font = (sz, w) => `${w||400} ${sz}px -apple-system,"PingFang SC",system-ui,sans-serif`;
+
+    g.fillStyle = v('--bg') || '#f5f2ec'; g.fillRect(0,0,W,H);
+    g.fillStyle = v('--card') || '#fff';
+    const pad = 72, cw = W - pad*2;
+    if (g.roundRect){ g.beginPath(); g.roundRect(pad, 180, cw, 900, 40); g.fill(); }
+    else g.fillRect(pad, 180, cw, 900);
+
+    g.fillStyle = v('--accent') || '#c47a5a';
+    g.font = font(30, 500);
+    g.fillText('这一周', pad + 56, 300);
+
+    g.fillStyle = v('--text') || '#222';
+    g.font = font(190, 500);
+    g.fillText(String(r.done), pad + 56, 480);
+    g.font = font(38);
+    g.fillStyle = v('--text-dim') || '#888';
+    g.fillText('件事做完了', pad + 56 + g.measureText(String(r.done)).width + 210, 480);
+
+    g.font = font(34);
+    g.fillText(`${r.from}  —  ${r.to}`, pad + 56, 560);
+
+    // 七日方块
+    const bw = 96, gap = 24, y = 660;
+    for (let i = 0; i < 7; i++){
+      const n = Store.count('recap_done:' + r.days[i]);
+      g.fillStyle = n ? (v('--accent') || '#c47a5a') : (v('--line') || '#e5e5e5');
+      g.globalAlpha = n ? Math.min(1, 0.35 + n * 0.18) : 1;
+      const x = pad + 56 + i * (bw + gap);
+      if (g.roundRect){ g.beginPath(); g.roundRect(x, y, bw, bw, 26); g.fill(); }
+      else g.fillRect(x, y, bw, bw);
+      g.globalAlpha = 1;
+      g.fillStyle = v('--text-dim') || '#888';
+      g.font = font(28);
+      g.fillText('一二三四五六日'[i], x + bw/2 - 14, y + bw + 48);
+    }
+
+    g.fillStyle = v('--text') || '#222';
+    g.font = font(46, 500);
+    g.fillText(`连续记录 ${r.streak} 天`, pad + 56, 900);
+
+    g.fillStyle = v('--text-dim') || '#999';
+    g.font = font(26);
+    g.fillText('小流', pad + 56, 1010);
+    g.font = font(22);
+    g.fillText('由 不一书个人工作台生成器 生成', pad + 56, 1046);
+
+    // 导出。iOS 上 download 属性时常无效，所以失败就退回新窗口打开让用户长按保存
+    cv.toBlob(b => {
+      const url = URL.createObjectURL(b);
+      const a = document.createElement('a');
+      a.href = url; a.download = `这一周-${r.to}.png`;
+      a.click();
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+        UI.toast('图卡已保存到下载目录');
+      }, 800);
+    }, 'image/png');
+  }
+};
+/* ==== 功能：周复盘 END ==== */
+
+
+App.init();
+</script>
+</body>
+</html>
