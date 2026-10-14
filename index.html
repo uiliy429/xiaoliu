@@ -376,6 +376,9 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent)}
           <input type="number" id="moneyAmount" inputmode="decimal" placeholder="多少元">
           <button class="btn" onclick="Money.add()">记下</button>
         </div>
+        <div class="row" style="margin-top:8px">
+          <input type="text" id="moneyNote" placeholder="备注（选填）：这钱花哪儿了">
+        </div>
         <!-- 固定分类 + 自定义分类，都由 Money.renderCats() 渲染 -->
         <div class="cats" id="moneyCats"></div>
         <div class="row" id="moneyCustomRow" style="margin-top:10px;display:none">
@@ -428,7 +431,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent)}
           <input type="number" id="bookPage" inputmode="numeric" placeholder="读到第几页">
           <button class="btn" onclick="Book.update()">更新</button>
         </div>
-        <p class="hint">改页码也算一次记录</p>
+        <p class="hint" id="bookCurHint">记到当前选中的那本书上</p>
       </div>
 
       <div class="card">
@@ -873,7 +876,8 @@ const Chore = {
     const el = document.getElementById('choreInput');
     const text = el.value.trim();
     if (!text) return;
-    const tpl = Store.get('chore_list', []);
+    // 用 this.defaults() 兜底：首次添加时默认那几项还在，不会被空数组覆盖掉
+    const tpl = Store.get('chore_list', this.defaults());
     tpl.push({ id: Util.uid(), text });
     Store.set('chore_list', tpl);
     el.value = '';
@@ -964,9 +968,12 @@ const Money = {
     const recent = monthItems.slice(-40).reverse();
     list.innerHTML = recent.length
       ? recent.map(x => {
+          const note = x.note
+            ? `<span class="hint" style="margin:0"> · ${Util.esc(x.note)}</span>`
+            : '';
           return `<div class="item">
             <span class="grow">${Util.esc(this.nameOf(x.cat))}
-              <span class="hint" style="margin:0"> · ${Util.esc(x.date)}</span></span>
+              <span class="hint" style="margin:0"> · ${Util.esc(x.date)}</span>${note}</span>
             <span class="num" style="flex-shrink:0">¥${x.amount.toFixed(2)}</span>
             <button class="del" onclick="Money.del('${x.id}')">✕</button>
           </div>`;
@@ -1019,14 +1026,18 @@ const Money = {
 
   add(){
     const el = document.getElementById('moneyAmount');
+    const noteEl = document.getElementById('moneyNote');
     const v = parseFloat(el.value);
     if (!v || v <= 0) return UI.toast('输入一个金额');
+    const note = (noteEl && noteEl.value.trim()) || '';
+    if (note.length > 20) return UI.toast('备注别超过 20 个字');
     Store.upsert('money', {
-      date: Util.today(), amount: Math.round(v * 100) / 100, cat: this._cat
+      date: Util.today(), amount: Math.round(v * 100) / 100, cat: this._cat, note
     });
     el.value = '';
+    if (noteEl) noteEl.value = '';
     Store.incr('recap_done:' + Util.today());
-    UI.toast('已记 ¥' + v);
+    UI.toast(note ? `已记 ¥${v} · ${note}` : '已记 ¥' + v);
     this.render();
   },
 
@@ -1183,31 +1194,73 @@ const Ddl = {
 
 /* ==== 功能：读书 START ==== */
 const Book = {
+  /** 当前正在记进度的那本书的 id（记住选择，刷新后还在） */
+  curId(){
+    return Store.get('book_cur', null);
+  },
+  setCur(id){
+    Store.set('book_cur', id);
+  },
+
   render(){
     const books = Store.list('books');
-    const cur = books.find(b => !b.finished);
+    const reading = books.filter(b => !b.finished);
     const box = document.getElementById('bookNow');
 
+    // 当前书：优先用记住的那本；没有或已读完就顺延到第一本在读的
+    let cur = reading.find(b => b.id === this.curId());
+    if (!cur && reading.length) { cur = reading[0]; this.setCur(cur.id); }
+
     if (box) {
-      if (cur) {
-        const total = cur.total || 0;
-        const pct = total ? Math.min(100, Math.round(cur.page / total * 100)) : 0;
+      if (reading.length === 0) {
+        box.innerHTML = `<h2>📖 正在读</h2><div class="empty">还没有在读的书<br>下面加一本开始</div>`;
+      } else if (reading.length === 1) {
+        // 只有一本：保持原来的大数字版式
+        const b = reading[0];
+        const total = b.total || 0;
+        const pct = total ? Math.min(100, Math.round((b.page || 0) / total * 100)) : 0;
         box.innerHTML = `
           <h2>📖 正在读</h2>
-          <div class="hero num">${cur.page}<span class="unit">/ ${total || '?'} 页</span></div>
+          <div class="hero num">${b.page || 0}<span class="unit">/ ${total || '?'} 页</span></div>
           <div class="bar" style="height:8px;background:var(--line);border-radius:5px;overflow:hidden;margin:14px 0 8px">
             <i style="display:block;height:100%;width:${pct}%;background:var(--accent);border-radius:5px"></i>
           </div>
           <div class="row" style="justify-content:space-between">
-            <span class="hint" style="margin:0">《${Util.esc(cur.title)}》</span>
-            <span class="hint" style="margin:0">${total ? '还剩 ' + Math.max(0, total - cur.page) + ' 页 · ' : ''}${pct}%</span>
+            <span class="hint" style="margin:0">《${Util.esc(b.title)}》</span>
+            <span class="hint" style="margin:0">${total ? '还剩 ' + Math.max(0, total - (b.page || 0)) + ' 页 · ' : ''}${pct}%</span>
           </div>
           <div class="row" style="margin-top:16px">
-            <button class="btn ghost" onclick="Book.finish('${cur.id}')">读完了</button>
+            <button class="btn ghost" onclick="Book.finish('${b.id}')">读完了</button>
           </div>`;
       } else {
-        box.innerHTML = `<div class="empty">还没有在读的书<br>下面加一本开始</div>`;
+        // 多本并行：列表展示，点一下切换当前书
+        box.innerHTML = `
+          <h2>📖 同时在读 ${reading.length} 本</h2>
+          ${reading.map(b => {
+            const total = b.total || 0;
+            const pct = total ? Math.min(100, Math.round((b.page || 0) / total * 100)) : 0;
+            const on = b.id === (cur && cur.id);
+            return `<div class="item bookpick" data-id="${Util.esc(b.id)}"
+                     style="cursor:pointer;${on ? 'background:var(--sidebar-active);border-radius:8px;padding-left:8px;padding-right:8px' : ''}">
+              <span class="box" style="${on ? 'background:var(--accent);border-color:var(--accent);color:#fff' : ''}">${on ? '✓' : ''}</span>
+              <span class="grow">《${Util.esc(b.title)}》
+                <span class="hint" style="margin:0"> · ${b.page || 0}/${total || '?'} 页 · ${pct}%</span>
+              </span>
+              <button class="del" onclick="event.stopPropagation();Book.finish('${b.id}')">✓</button>
+            </div>`;
+          }).join('')}
+          <p class="hint" style="margin:12px 0 0">点一行切换，下面「记进度」就记到这本书上</p>`;
+        box.querySelectorAll('.bookpick').forEach(el =>
+          el.onclick = () => this.pick(el.dataset.id));
       }
+    }
+
+    // 提示位告诉用户"记进度"会记到哪本书上
+    const hintEl = document.getElementById('bookCurHint');
+    if (hintEl) {
+      hintEl.textContent = cur
+        ? `记到《${cur.title}》上 · 改页码也算一次记录`
+        : '改页码也算一次记录';
     }
 
     const his = document.getElementById('bookHistory');
@@ -1217,8 +1270,17 @@ const Book = {
       ? done.map(b => `<div class="item">
             <span class="grow">《${Util.esc(b.title)}》</span>
             <span class="hint" style="margin:0">${b.total} 页</span>
+            <button class="del" onclick="Book.unfinish('${b.id}')">↩</button>
           </div>`).join('')
       : '<div class="empty">还没有读完的书</div>';
+  },
+
+  /** 切换当前在读的书 */
+  pick(id){
+    this.setCur(id);
+    this.render();
+    const el = document.getElementById('bookPage');
+    if (el) el.focus();
   },
 
   add(){
@@ -1226,7 +1288,8 @@ const Book = {
     const total = parseInt(document.getElementById('bookTotal').value, 10);
     if (!title) return UI.toast('写个书名');
     if (!total || total <= 0) return UI.toast('总页数是多少');
-    Store.upsert('books', { title, total, page: 0, finished: false, started: Util.today() });
+    const item = Store.upsert('books', { title, total, page: 0, finished: false, started: Util.today() });
+    this.setCur(item.id);              // 新加的这本直接设为当前，接着就能记进度
     document.getElementById('bookTitle').value = '';
     document.getElementById('bookTotal').value = '';
     UI.toast('开始读《' + title + '》');
@@ -1237,19 +1300,31 @@ const Book = {
     const el = document.getElementById('bookPage');
     const p = parseInt(el.value, 10);
     if (isNaN(p) || p < 0) return UI.toast('输入页码');
-    const cur = Store.list('books').find(b => !b.finished);
-    if (!cur) return UI.toast('先加一本在读的书');
+    const reading = Store.list('books').filter(b => !b.finished);
+    if (!reading.length) return UI.toast('先加一本在读的书');
+    // 记到「当前书」上，没有记住的就用第一本
+    let cur = reading.find(b => b.id === this.curId()) || reading[0];
+    this.setCur(cur.id);
     Store.upsert('books', { id: cur.id, page: p, lastRead: Util.today() });
     el.value = '';
     Store.incr('recap_done:' + Util.today());
-    UI.toast('记到第 ' + p + ' 页');
+    UI.toast(`《${cur.title}》记到第 ` + p + ' 页');
     this.render();
   },
 
   finish(id){
     Store.upsert('books', { id, finished: true, page: (Store.list('books').find(b=>b.id===id)||{}).total || 0 });
+    // 读完了就别再当"当前书"，让位给其它在读的
+    if (this.curId() === id) Store.remove('book_cur');
     Store.incr('recap_done:' + Util.today());
     UI.toast('读完一本 🎉');
+    this.render();
+  },
+
+  /** 手滑点错"读完了"，放回在读列表 */
+  unfinish(id){
+    Store.upsert('books', { id, finished: false });
+    UI.toast('已放回在读');
     this.render();
   }
 };
