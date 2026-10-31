@@ -391,6 +391,16 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent)}
       </div>
 
       <div class="card wide">
+        <h2>📊 支出占比</h2>
+        <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:4px">
+          <button class="btn ghost" style="padding:5px 11px;font-size:13px" onclick="Month.prev()">‹ 上月</button>
+          <span class="num" id="monthLabel" style="font-size:15px;font-weight:600"></span>
+          <button class="btn ghost" style="padding:5px 11px;font-size:13px" onclick="Month.next()">下月 ›</button>
+        </div>
+        <div id="monthBody"></div>
+      </div>
+
+      <div class="card wide">
         <h2>🧾 本月流水</h2>
         <div id="moneyList"></div>
       </div>
@@ -933,6 +943,7 @@ const Money = {
   render(){
     this.renderCats();
     this.renderStats();
+    Month.render();
   },
 
   /** 渲染分类按钮（固定 + 自定义） */
@@ -1044,6 +1055,133 @@ const Money = {
   del(id){
     Store.softDelete('money', id);
     this.render();
+  }
+};
+
+/* ── 自然月支出占比 ── */
+const Month = {
+  // 用今天的年月初始化，之后可以左右翻
+  _ym: null,
+
+  /** 取当前查看的年月，没设过就用本月 */
+  ym(){
+    if (!this._ym) this._ym = Util.today().slice(0, 7);
+    return this._ym;
+  },
+
+  /** 每个分类一个固定颜色，翻月不跳色，方便对比 */
+  COLORS: {
+    food:  '#2f5d52',
+    cloth: '#5b8c7b',
+    trans: '#7fa897',
+    daily: '#a3bfae',
+    book:  '#c2d4c6',
+    fun:   '#8aa38f',
+    other: '#b8c9bd'
+  },
+  // 自定义分类用这组后备色轮着来，避免和上面撞得太厉害
+  FALLBACK: ['#4a7a68', '#6d9d8a', '#93b5a2', '#b7cbbc', '#d0ded3'],
+
+  colorOf(k, i){
+    return this.COLORS[k] || this.FALLBACK[i % this.FALLBACK.length];
+  },
+
+  /** 上一个月 */
+  prev(){
+    this._ym = this.shiftMonth(this.ym(), -1);
+    this.render();
+  },
+
+  /** 下一个月，不允许翻到未来 */
+  next(){
+    const nextYm = this.shiftMonth(this.ym(), 1);
+    if (nextYm > Util.today().slice(0, 7)) return;   // 未来月份没意义
+    this._ym = nextYm;
+    this.render();
+  },
+
+  render(){
+    const label = document.getElementById('monthLabel');
+    const body  = document.getElementById('monthBody');
+    if (!body) return;
+
+    const ym = this.ym();
+    const [y, m] = ym.split('-').map(Number);
+    if (label) label.textContent = `${y} 年 ${m} 月`;
+
+    // 该自然月的全部记录（同月所有天，不限于本月流水那 40 条）
+    const items = Store.list('money').filter(x => (x.date || '').startsWith(ym));
+    const total = items.reduce((s, x) => s + (x.amount || 0), 0);
+
+    if (!items.length) {
+      body.innerHTML = '<div class="empty">这个月还没有记账</div>';
+      return;
+    }
+
+    // 按分类归并
+    const byCat = new Map();
+    for (const x of items) {
+      const k = x.cat || 'other';
+      const cur = byCat.get(k) || { k, sum: 0, n: 0 };
+      cur.sum += x.amount || 0;
+      cur.n += 1;
+      byCat.set(k, cur);
+    }
+    const rows = [...byCat.values()].sort((a, b) => b.sum - a.sum);
+
+    // 堆叠条：一段代表一个分类，宽度按占比
+    const stack = rows.map((r, i) => {
+      const w = total ? (r.sum / total * 100) : 0;
+      return `<i style="display:block;height:100%;width:${w}%;background:${this.colorOf(r.k, i)}" title="${Util.esc(this.name(r.k))}"></i>`;
+    }).join('');
+
+    const list = rows.map((r, i) => {
+      const pct = total ? (r.sum / total * 100) : 0;
+      return `<div class="item">
+        <span style="width:9px;height:9px;border-radius:50%;flex-shrink:0;background:${this.colorOf(r.k, i)}"></span>
+        <span class="grow">${Util.esc(this.name(r.k))}
+          <span class="hint" style="margin:0"> · ${r.n} 笔</span></span>
+        <span class="hint num" style="margin:0;flex-shrink:0;width:46px;text-align:right">${pct.toFixed(0)}%</span>
+        <span class="num" style="flex-shrink:0;width:76px;text-align:right">¥${r.sum.toFixed(2)}</span>
+      </div>`;
+    }).join('');
+
+    // 和上个月比一比，多看几个月才有感觉
+    const prevYm = this.shiftMonth(ym, -1);
+    const prevTotal = Store.list('money')
+      .filter(x => (x.date || '').startsWith(prevYm))
+      .reduce((s, x) => s + (x.amount || 0), 0);
+    let cmp = '';
+    if (prevTotal > 0) {
+      const diff = total - prevTotal;
+      const rate = Math.abs(diff / prevTotal * 100);
+      if (Math.abs(rate) < 1) cmp = '　和上月基本持平';
+      else cmp = diff > 0
+        ? `　比上月多花 ¥${diff.toFixed(0)}（+${rate.toFixed(0)}%）`
+        : `　比上月少花 ¥${Math.abs(diff).toFixed(0)}（-${rate.toFixed(0)}%）`;
+    }
+
+    const avg = items.length ? total / items.length : 0;
+
+    body.innerHTML = `
+      <div class="hero num" style="margin-top:10px">¥${total.toFixed(0)}<span class="unit">这个月共花</span></div>
+      <p class="hint" style="margin:8px 0 16px">${items.length} 笔 · 平均每笔 ¥${avg.toFixed(0)}${cmp}</p>
+      <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;margin:0 0 16px">${stack}</div>
+      ${list}
+      <p class="hint" style="margin:14px 0 0">只统计各分类的金额占比，不含转账和借还</p>`;
+  },
+
+  /** 分类显示名，沿用记账页的映射（含历史分类兼容） */
+  name(k){
+    return Money.nameOf(k);
+  },
+
+  /** ym 加减若干个月，返回 'YYYY-MM' */
+  shiftMonth(ym, delta){
+    const [y, m] = ym.split('-').map(Number);
+    const d = new Date(y, m - 1 + delta, 1);
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
   }
 };
 /* ==== 功能：记账 END ==== */
